@@ -95,14 +95,27 @@ class VerifyAnswerModal(discord.ui.Modal):
 
         # 1번 닉네임 문제는 틀리면 다음 문제로 넘어가지 않음
         if self.question["type"] == "nickname" and not is_correct:
-            await interaction.response.send_message(
-                "❌ 디스코드 닉네임 형식이 올바르지 않거나,\n"
-                "현재 서버 닉네임과 입력한 닉네임이 일치하지 않습니다.\n\n"
-                "마을 디스코드 닉네임을 아래 형식으로 변경한 뒤,\n"
-                "변경한 닉네임을 그대로 입력해주세요.\n\n"
-                "예시 : `디얼 [new_dear]`",
-                ephemeral=True
-            )
+            answer = str(self.answer.value).strip()
+            server_nickname = interaction.user.nick or interaction.user.name
+
+            pattern = r"^[가-힣A-Za-z0-9_]{1,20}\s*\[[A-Za-z0-9_]{2,20}\]$"
+
+            if re.match(pattern, answer) is None:
+                await interaction.response.send_message(
+                    "❌ 닉네임 형식이 올바르지 않습니다.\n\n"
+                    "아래 예시처럼 입력해주세요.\n"
+                    "예시 : 디얼 [new_dear]",
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    "❌ 닉네임 확인에 실패했습니다.\n\n"
+                    "입력한 닉네임과 현재 도동마을 서버 별명이 일치하지 않습니다.\n\n"
+                    "먼저 **도동마을 디스코드 서버 별명을 인게임 닉네임과 동일하게 변경**한 후 다시 인증해주세요.\n\n"
+                    f"현재 서버 별명 : {server_nickname}\n"
+                    f"입력한 닉네임 : {answer}",
+                    ephemeral=True
+                )
             return
 
         if is_correct:
