@@ -1,5 +1,7 @@
 import asyncio
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
@@ -123,7 +125,11 @@ def parse_cooking(text: str) -> dict:
     return results
 
 
-def build_result_text(results: dict) -> str:
+def build_result_text(
+    results: dict,
+    updater_name: str,
+    time_text: str,
+) -> str:
     parts = ["🍳 **요리 변동상점**"]
 
     for status, title in [
@@ -155,6 +161,9 @@ def build_result_text(results: dict) -> str:
         "※ 추천은 변동 시세의 중간값 이상, "
         "고점은 상위 10% 구간을 기준으로 선정됩니다."
     )
+
+    parts.append("")
+    parts.append(f"> 업데이트 : {updater_name} / {time_text}")
 
     return "\n".join(parts)
 
@@ -415,7 +424,16 @@ class Cooking(commands.Cog):
                 return
 
             results = parse_cooking(message.content)
-            result_text = build_result_text(results)
+
+            time_text = datetime.now(
+                ZoneInfo("Asia/Seoul")
+            ).strftime("%Y-%m-%d %H:%M")
+
+            result_text = build_result_text(
+                results,
+                message.author.display_name,
+                time_text,
+            )
 
             try:
                 await message.delete()
