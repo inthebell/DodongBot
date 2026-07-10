@@ -31,7 +31,18 @@ backdrop-filter:blur(8px);
 transition:.2s}
 .card:hover{transform:translateY(-5px)}
 .card h3{margin-bottom:10px}
-.gallery img{width:100%;border-radius:15px;background:#12233d;min-height:180px}
+.gallery img{
+width:100%;
+height:320px;
+object-fit:contain;
+background:#12233d;
+border-radius:15px;
+padding:10px;
+transition:.25s;
+}
+.gallery img:hover{
+transform:scale(1.03);
+}
 footer{text-align:center;padding:40px;color:#90a8c8}
 .small{color:#9bb5d6}
 </style>
@@ -74,9 +85,24 @@ footer{text-align:center;padding:40px;color:#90a8c8}
 
 <section class="section gallery">
 <h2 class="title">실제 사용 화면</h2>
-<p class="small" style="text-align:center;margin-bottom:20px">
-README에 있는 docs/images/cooking1~4, wiki1~2 이미지를 같은 폴더 구조로 업로드하면 자동으로 표시됩니다.
+<div style="max-width:900px;margin:0 auto 40px;text-align:left;line-height:1.9;">
+
+<h3 style="margin-bottom:10px;">🍳 요리 및 연금 변동상점</h3>
+
+<p style="margin-bottom:30px;">
+1. <b>/요리 변동채널 설정</b> 명령어로 원하는 채널을 지정합니다.<br>
+2. 동글랜드 요리 변동상점에 올라온 변동 내용을 복사합니다.<br>
+3. 설정된 채널에 붙여넣기만 하면 도동봇이 자동으로 분석하여 추천 요리를 안내합니다.
 </p>
+
+<h3 style="margin-bottom:10px;">📚 동글랜드 위키</h3>
+
+<p>
+1. <b>/위키 질문채널 설정</b> 명령어로 원하는 채널을 지정합니다.<br>
+2. 설정된 채널에 궁금한 내용을 입력하면 도동봇이 동글랜드 위키를 검색하여 관련 정보를 안내합니다.
+</p>
+
+</div>
 <div class="grid">
 <img src="docs/images/cooking1.png">
 <img src="docs/images/cooking2.png">
