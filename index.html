@@ -117,5 +117,119 @@ footer{text-align:center;padding:40px;color:#90a8c8}
 © DodongBot
 </footer>
 </div>
+<script>
+const images = Array.from(document.querySelectorAll(".gallery img"));
+let currentIndex = 0;
+
+function openImage(index) {
+    currentIndex = index;
+
+    const overlay = document.createElement("div");
+    overlay.id = "imageViewer";
+
+    overlay.style.position = "fixed";
+    overlay.style.left = "0";
+    overlay.style.top = "0";
+    overlay.style.width = "100%";
+    overlay.style.height = "100%";
+    overlay.style.background = "rgba(0,0,0,.9)";
+    overlay.style.display = "flex";
+    overlay.style.justifyContent = "center";
+    overlay.style.alignItems = "center";
+    overlay.style.zIndex = "9999";
+
+    const img = document.createElement("img");
+    img.src = images[currentIndex].src;
+    img.style.maxWidth = "90%";
+    img.style.maxHeight = "90%";
+    img.style.borderRadius = "15px";
+    img.style.boxShadow = "0 0 30px rgba(0,0,0,.6)";
+    img.style.transition = ".2s";
+
+    const left = document.createElement("div");
+    left.innerHTML = "❮";
+    left.style.cssText = `
+        position:absolute;
+        left:30px;
+        font-size:60px;
+        color:white;
+        cursor:pointer;
+        user-select:none;
+    `;
+
+    const right = document.createElement("div");
+    right.innerHTML = "❯";
+    right.style.cssText = `
+        position:absolute;
+        right:30px;
+        font-size:60px;
+        color:white;
+        cursor:pointer;
+        user-select:none;
+    `;
+
+    function updateImage() {
+        img.src = images[currentIndex].src;
+    }
+
+    left.onclick = (e) => {
+        e.stopPropagation();
+        currentIndex =
+            (currentIndex - 1 + images.length) % images.length;
+        updateImage();
+    };
+
+    right.onclick = (e) => {
+        e.stopPropagation();
+        currentIndex =
+            (currentIndex + 1) % images.length;
+        updateImage();
+    };
+
+    overlay.onclick = () => overlay.remove();
+
+    document.addEventListener("keydown", function keyHandler(e) {
+
+        if (!document.getElementById("imageViewer")) {
+            document.removeEventListener("keydown", keyHandler);
+            return;
+        }
+
+        if (e.key === "Escape") {
+            overlay.remove();
+            document.removeEventListener("keydown", keyHandler);
+        }
+
+        if (e.key === "ArrowRight") {
+            currentIndex =
+                (currentIndex + 1) % images.length;
+            updateImage();
+        }
+
+        if (e.key === "ArrowLeft") {
+            currentIndex =
+                (currentIndex - 1 + images.length) % images.length;
+            updateImage();
+        }
+
+    });
+
+    overlay.appendChild(left);
+    overlay.appendChild(img);
+    overlay.appendChild(right);
+
+    document.body.appendChild(overlay);
+}
+
+images.forEach((image, index) => {
+
+    image.style.cursor = "zoom-in";
+
+    image.onclick = () => {
+        openImage(index);
+    };
+
+});
+</script>
 </body>
 </html>
