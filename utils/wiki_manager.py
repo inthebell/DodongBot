@@ -106,7 +106,7 @@ def clean_page_text(soup: BeautifulSoup) -> tuple[str, str]:
     return title or "동글랜드 위키", body
 
 
-def make_summary(page: WikiPage, query: str, limit: int = 900) -> str:
+def make_summary(page: WikiPage, query: str, limit: int = 650) -> str:
     lines = [
         re.sub(r"\s+", " ", line).strip()
         for line in page.text.splitlines()
@@ -114,36 +114,78 @@ def make_summary(page: WikiPage, query: str, limit: int = 900) -> str:
     ]
 
     if not lines:
-        return "관련 내용을 찾았지만 본문을 불러오지 못했습니다."
+        return (
+            "질문과 관련된 위키 페이지를 찾았습니다.\n"
+            "자세한 내용은 아래 위키 바로가기를 확인해주세요."
+        )
 
-    query_tokens = tokenize(query)
-    normalized_query = normalize_text(query)
+    query_tokens = [
+        normalize_text(token)
+        for token in tokenize(query)
+        if normalize_text(token)
+    ]
 
-    matched_indexes = []
+    scored_lines = []
 
     for index, line in enumerate(lines):
         normalized_line = normalize_text(line)
+        score = 0
 
-        if normalized_query and normalized_query in normalized_line:
-            matched_indexes.append(index)
-            continue
+        for token in query_tokens:
+            if token in normalized_line:
+                score += 5
 
-        if any(
-            normalize_text(token) in normalized_line
-            for token in query_tokens
-        ):
-            matched_indexes.append(index)
+        if index == 0:
+            score += 2
+
+        if len(line) > 180:
+            score -= 2
+
+        if re.search(r"[x×]\s*\d+|\d+\s*개", line, re.IGNORECASE):
+            score -= 1
+
+        scored_lines.append(
+            (score, index, line)
+        )
+
+    scored_lines.sort(
+        key=lambda item: (-item[0], item[1])
+    )
 
     selected = []
+    used_indexes = set()
 
-    if matched_indexes:
-        start = max(0, matched_indexes[0] - 1)
-        end = min(len(lines), matched_indexes[0] + 6)
-        selected = lines[start:end]
-    else:
-        selected = lines[:7]
+    for score, index, line in scored_lines:
+        if len(selected) >= 3:
+            break
 
-    summary = "\n".join(selected)
+        if score <= 0 and selected:
+            continue
+
+        if index in used_indexes:
+            continue
+
+        selected.append((index, line))
+        used_indexes.add(index)
+
+    if not selected:
+        selected = [
+            (index, line)
+            for index, line in enumerate(lines[:3])
+        ]
+
+    selected.sort(key=lambda item: item[0])
+
+    summary_lines = [
+        line
+        for _, line in selected
+    ]
+
+    summary = "\n".join(summary_lines)
+    summary += (
+        "\n\n자세한 수치, 재료, 조건 등은 "
+        "아래 위키 바로가기를 확인해주세요."
+    )
 
     if len(summary) > limit:
         summary = summary[: limit - 1].rstrip() + "…"
