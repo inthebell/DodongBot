@@ -40,7 +40,7 @@ class Help(commands.Cog):
         embed.add_field(
             name="🎓 계산",
             value=(
-                "`/레벨`\n"
+                "`/경험치`\n"
                 "바닐라 경험치를 레벨로 계산합니다."
             ),
             inline=False

@@ -26,7 +26,7 @@ class Level(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="레벨", description="바닐라 경험치를 레벨로 계산합니다.")
+    @app_commands.command(name="경험치", description="바닐라 경험치를 레벨로 계산합니다.")
     @app_commands.describe(exp="계산할 총 경험치")
     async def level(self, interaction: discord.Interaction, exp: int):
         if exp < 0:
