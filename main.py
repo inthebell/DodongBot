@@ -34,6 +34,7 @@ async def load_extensions():
     await bot.load_extension("cogs.cooking")
     await bot.load_extension("cogs.alchemy")
     await bot.load_extension("cogs.donghyeop")
+    await bot.load_extension("cogs.wiki")
     await bot.load_extension("cogs.level")
     await bot.load_extension("cogs.verify")
 async def main():
