@@ -14,14 +14,19 @@ bot = commands.Bot(
     intents=intents
 )
 
-
+DODONG_GUILD_ID = 1517850860322029618
 @bot.event
 async def on_ready():
     print(f"{bot.user} 로그인 완료!")
 
     try:
         synced = await bot.tree.sync()
-        print(f"슬래시 명령어 {len(synced)}개 동기화 완료!")
+
+        guild = discord.Object(id=DODONG_GUILD_ID)
+        guild_synced = await bot.tree.sync(guild=guild)
+
+        print(f"글로벌 명령어 {len(synced)}개 동기화 완료!")
+        print(f"도동마을 명령어 {len(guild_synced)}개 동기화 완료!")
     except Exception as e:
         print(e)
 
