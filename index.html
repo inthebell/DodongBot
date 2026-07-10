@@ -1,333 +1,97 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title>DodongBot | 도동봇</title>
-
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
-
-    body {
-      min-height: 100vh;
-      font-family: Arial, "Noto Sans KR", sans-serif;
-      color: #ffffff;
-      background:
-        radial-gradient(circle at top, #343b70 0%, #171b2d 45%, #0d0f18 100%);
-    }
-
-    a {
-      text-decoration: none;
-      color: inherit;
-    }
-
-    .container {
-      width: min(1100px, calc(100% - 40px));
-      margin: 0 auto;
-    }
-
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      height: 76px;
-    }
-
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 22px;
-      font-weight: 800;
-    }
-
-    .logo-icon {
-      font-size: 30px;
-    }
-
-    .top-button {
-      padding: 11px 18px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.08);
-      font-size: 14px;
-      font-weight: 700;
-      transition: 0.2s;
-    }
-
-    .top-button:hover {
-      background: rgba(255, 255, 255, 0.15);
-      transform: translateY(-2px);
-    }
-
-    .hero {
-      min-height: calc(100vh - 76px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 60px 0 100px;
-    }
-
-    .hero-card {
-      width: 100%;
-      max-width: 850px;
-      padding: 70px 30px;
-      text-align: center;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 32px;
-      background: rgba(20, 23, 38, 0.82);
-      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
-      backdrop-filter: blur(14px);
-    }
-
-    .bot-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 105px;
-      height: 105px;
-      margin-bottom: 26px;
-      border-radius: 28px;
-      background: linear-gradient(135deg, #ff4f9a, #7668ff);
-      box-shadow: 0 15px 35px rgba(118, 104, 255, 0.3);
-      font-size: 62px;
-    }
-
-    h1 {
-      margin-bottom: 18px;
-      font-size: clamp(46px, 8vw, 76px);
-      line-height: 1;
-      letter-spacing: -3px;
-    }
-
-    .subtitle {
-      margin: 0 auto 12px;
-      font-size: clamp(19px, 3vw, 25px);
-      font-weight: 700;
-      color: #dfe2ff;
-    }
-
-    .description {
-      max-width: 620px;
-      margin: 0 auto;
-      color: #aeb4cf;
-      font-size: 16px;
-      line-height: 1.8;
-      word-break: keep-all;
-    }
-
-    .buttons {
-      display: flex;
-      justify-content: center;
-      gap: 14px;
-      margin-top: 36px;
-      flex-wrap: wrap;
-    }
-
-    .button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 180px;
-      padding: 15px 24px;
-      border-radius: 14px;
-      font-size: 16px;
-      font-weight: 800;
-      transition: 0.2s;
-    }
-
-    .button:hover {
-      transform: translateY(-3px);
-    }
-
-    .button-primary {
-      background: linear-gradient(135deg, #7c6cff, #5865f2);
-      box-shadow: 0 12px 30px rgba(88, 101, 242, 0.35);
-    }
-
-    .button-secondary {
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      background: rgba(255, 255, 255, 0.08);
-    }
-
-    .features {
-      padding: 20px 0 100px;
-    }
-
-    .section-title {
-      margin-bottom: 32px;
-      text-align: center;
-      font-size: 34px;
-    }
-
-    .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 18px;
-    }
-
-    .feature-card {
-      padding: 28px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.055);
-    }
-
-    .feature-icon {
-      display: block;
-      margin-bottom: 16px;
-      font-size: 34px;
-    }
-
-    .feature-card h3 {
-      margin-bottom: 10px;
-      font-size: 20px;
-    }
-
-    .feature-card p {
-      color: #aeb4cf;
-      font-size: 14px;
-      line-height: 1.7;
-      word-break: keep-all;
-    }
-
-    footer {
-      padding: 28px 20px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-      text-align: center;
-      color: #858ba5;
-      font-size: 13px;
-    }
-
-    @media (max-width: 760px) {
-      header {
-        height: 66px;
-      }
-
-      .top-button {
-        padding: 9px 13px;
-        font-size: 13px;
-      }
-
-      .hero {
-        min-height: calc(100vh - 66px);
-        padding: 35px 0 70px;
-      }
-
-      .hero-card {
-        padding: 52px 20px;
-        border-radius: 24px;
-      }
-
-      .bot-icon {
-        width: 88px;
-        height: 88px;
-        font-size: 52px;
-      }
-
-      h1 {
-        letter-spacing: -2px;
-      }
-
-      .feature-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .button {
-        width: 100%;
-      }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DodongBot</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+font-family:Arial,"Noto Sans KR",sans-serif;
+background:linear-gradient(180deg,#08111f,#0d1b2f,#071018);
+color:#fff;
+line-height:1.6}
+.container{max-width:1100px;margin:auto;padding:0 20px}
+header{padding:24px 0;display:flex;justify-content:space-between;align-items:center}
+.logo{font-size:28px;font-weight:800}
+.btn{display:inline-block;padding:14px 22px;border-radius:12px;background:#1d7cff;color:#fff;text-decoration:none;font-weight:700;transition:.2s}
+.btn:hover{transform:translateY(-2px);background:#3a93ff}
+.hero{text-align:center;padding:90px 0}
+.hero h1{font-size:64px}
+.hero p{max-width:700px;margin:20px auto;color:#c7d7ef}
+.section{padding:70px 0}
+.title{text-align:center;font-size:36px;margin-bottom:35px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px}
+.card{
+background:rgba(255,255,255,.06);
+border:1px solid rgba(255,255,255,.08);
+border-radius:18px;
+padding:24px;
+backdrop-filter:blur(8px);
+transition:.2s}
+.card:hover{transform:translateY(-5px)}
+.card h3{margin-bottom:10px}
+.gallery img{width:100%;border-radius:15px;background:#12233d;min-height:180px}
+footer{text-align:center;padding:40px;color:#90a8c8}
+.small{color:#9bb5d6}
+</style>
 </head>
-
 <body>
-  <div class="container">
-    <header>
-      <a href="#" class="logo">
-        <span class="logo-icon">🤖</span>
-        <span>DodongBot</span>
-      </a>
+<div class="container">
+<header>
+<div class="logo">🤖 DodongBot</div>
+<a class="btn" href="https://discord.com/oauth2/authorize?client_id=1524599732305920190&permissions=2416045056&integration_type=0&scope=bot+applications.commands" target="_blank">도동봇 초대하기</a>
+</header>
 
-      <a href="#features" class="top-button">
-        기능 보기
-      </a>
-    </header>
+<section class="hero">
+<h1>DodongBot</h1>
+<h2>동글랜드를 더욱 편리하게</h2>
+<p>
+시세 확인부터 각종 편의성까지,<br>
+동글랜드에서 필요한 기능을 디스코드에서 간편하게 확인하세요.
+</p>
+<a class="btn" href="#features">주요 기능 보기</a>
+</section>
 
-    <main>
-      <section class="hero">
-        <div class="hero-card">
-          <div class="bot-icon">🤖</div>
+<section class="section" id="features">
+<h2 class="title">주요 기능</h2>
+<div class="grid">
+<div class="card"><h3>📊 시세 확인</h3><p>동글랜드의 시세를 빠르고 편리하게 확인하세요.</p></div>
+<div class="card"><h3>🍽 음식 추천</h3><p>판매하기 좋은 음식을 빠르게 추천해드립니다.</p></div>
+<div class="card"><h3>📖 위키 확인</h3><p>빠르게 필요한 정보를 봇을 통해 확인하세요.</p></div>
+</div>
+</section>
 
-          <h1>DodongBot</h1>
+<section class="section">
+<h2 class="title">이런 기능도 있습니다</h2>
+<div class="grid">
+<div class="card">🍳 요리 변동상점</div>
+<div class="card">🧪 연금 변동상점</div>
+<div class="card">📚 동글랜드 위키</div>
+<div class="card">🤝 동협 계산기</div>
+<div class="card">⭐ 레벨 계산기</div>
+<div class="card">🏡 도동마을 입주 인증</div>
+</div>
+</section>
 
-          <p class="subtitle">
-            동글랜드를 더욱 편리하게
-          </p>
+<section class="section gallery">
+<h2 class="title">실제 사용 화면</h2>
+<p class="small" style="text-align:center;margin-bottom:20px">
+README에 있는 docs/images/cooking1~4, wiki1~2 이미지를 같은 폴더 구조로 업로드하면 자동으로 표시됩니다.
+</p>
+<div class="grid">
+<img src="docs/images/cooking1.png">
+<img src="docs/images/cooking2.png">
+<img src="docs/images/cooking3.png">
+<img src="docs/images/cooking4.png">
+<img src="docs/images/wiki1.png">
+<img src="docs/images/wiki2.png">
+</div>
+</section>
 
-          <p class="description">
-            시세 확인부터 추천 음식과 연금 정보까지,<br>
-            동글랜드에서 필요한 기능을 디스코드에서 간편하게 확인하세요.
-          </p>
-
-          <div class="buttons">
-            <a
-              class="button button-primary"
-              href="여기에_도동봇_초대링크"
-              target="_blank"
-            >
-              도동봇 초대하기
-            </a>
-
-            <a class="button button-secondary" href="#features">
-              주요 기능 보기
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <section class="features" id="features">
-        <h2 class="section-title">주요 기능</h2>
-
-        <div class="feature-grid">
-          <div class="feature-card">
-            <span class="feature-icon">📊</span>
-            <h3>시세 확인</h3>
-            <p>
-              동글랜드의 음식 시세를 쉽고 빠르게 확인할 수 있습니다.
-            </p>
-          </div>
-
-          <div class="feature-card">
-            <span class="feature-icon">🍽️</span>
-            <h3>음식 추천</h3>
-            <p>
-              변동 시세를 기준으로 판매하기 좋은 음식을 추천합니다.
-            </p>
-          </div>
-
-          <div class="feature-card">
-            <span class="feature-icon">💰</span>
-            <h3>연금 정보</h3>
-            <p>
-              연금 관련 정보와 필요한 계산을 디스코드에서 확인할 수 있습니다.
-            </p>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <footer>
-    © 2026 DodongBot. All rights reserved.
-  </footer>
+<footer>
+© DodongBot
+</footer>
+</div>
 </body>
 </html>
