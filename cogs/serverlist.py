@@ -4,6 +4,7 @@ from discord.ext import commands
 
 
 OWNER_ID = 478834154595811328
+GUILD_ID = 1517850860322029618
 
 
 class ServerList(commands.Cog):
@@ -14,6 +15,7 @@ class ServerList(commands.Cog):
         name="서버목록",
         description="도동봇이 들어가 있는 서버 목록을 확인합니다."
     )
+    @app_commands.guilds(discord.Object(id=GUILD_ID))
     async def server_list(self, interaction: discord.Interaction):
         if interaction.user.id != OWNER_ID:
             await interaction.response.send_message(
@@ -42,10 +44,8 @@ class ServerList(commands.Cog):
             lines.append(f"👥 **{member_count:,}명**")
             lines.append("")
 
-        message = "\n".join(lines)
-
         await interaction.response.send_message(
-            message,
+            "\n".join(lines),
             ephemeral=True
         )
 
