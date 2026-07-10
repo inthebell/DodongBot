@@ -42,6 +42,7 @@ async def load_extensions():
     await bot.load_extension("cogs.wiki")
     await bot.load_extension("cogs.level")
     await bot.load_extension("cogs.verify")
+    await bot.load_extension("cogs.serverlist")
 async def main():
     async with bot:
         await load_extensions()
