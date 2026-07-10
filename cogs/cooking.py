@@ -1,7 +1,15 @@
+import asyncio
 import re
+
 import discord
 from discord import app_commands
 from discord.ext import commands
+
+from utils.channel_manager import (
+    get_channel_id,
+    remove_channel_id,
+    set_channel_id,
+)
 
 
 FOOD_TIERS = {
@@ -32,6 +40,7 @@ FOOD_TIERS = {
     "스파이시 포크라이스": 5,
 }
 
+
 PRICE_RANGE = {
     1: (48, 62),
     2: (69, 90),
@@ -41,14 +50,21 @@ PRICE_RANGE = {
 }
 
 
+COOKING_PATTERN = re.compile(
+    r"\[(.*?)\]\s*\|\s*(\d+)\s*→\s*(\d+)"
+)
+
+
 def get_status(price: int, low: int, high: int) -> str:
     mid = (low + high) / 2
     high_point = low + (high - low) * 0.9
 
     if price >= high_point:
         return "고점"
+
     if price >= mid:
         return "추천"
+
     return "저점"
 
 
@@ -56,41 +72,65 @@ def is_normal_food(raw_name: str) -> bool:
     return "🩶" not in raw_name and "🌟" not in raw_name
 
 
-def parse_cooking(text: str):
-    results = {"고점": {}, "추천": {}}
+def contains_valid_cooking_data(text: str) -> bool:
+    matches = COOKING_PATTERN.findall(text)
 
-    pattern = r"\[(.*?)\]\s*\|\s*(\d+)\s*→\s*(\d+)"
+    if not matches:
+        return False
 
-    for raw_name, old_price, current_price in re.findall(pattern, text):
+    for raw_name, _, _ in matches:
         if not is_normal_food(raw_name):
             continue
 
         name = raw_name.strip()
-        price = int(current_price)
 
-        tier = FOOD_TIERS.get(name)
-        if not tier:
+        if name in FOOD_TIERS:
+            return True
+
+    return False
+
+
+def parse_cooking(text: str) -> dict:
+    results = {
+        "고점": {},
+        "추천": {},
+    }
+
+    for raw_name, _, current_price in COOKING_PATTERN.findall(text):
+        if not is_normal_food(raw_name):
             continue
 
+        name = raw_name.strip()
+        tier = FOOD_TIERS.get(name)
+
+        if tier is None:
+            continue
+
+        price = int(current_price)
         low, high = PRICE_RANGE[tier]
         status = get_status(price, low, high)
 
         if status == "저점":
             continue
 
-        results[status].setdefault((tier, low, high), []).append(
-              f"🍳 **{name}** - {price}원"
+        results[status].setdefault(
+            (tier, low, high),
+            [],
+        ).append(
+            f"🍳 **{name}** - {price}원"
         )
 
     return results
 
 
-def build_result_text(results):
+def build_result_text(results: dict) -> str:
     parts = ["🍳 **요리 변동상점**"]
 
-    for status, title in [("고점", "🔥 고점"), ("추천", "⭐ 추천")]:
-
-        if title != "🔥 고점":
+    for status, title in [
+        ("고점", "🔥 고점"),
+        ("추천", "⭐ 추천"),
+    ]:
+        if status == "추천":
             parts.append("\n━━━━━━━━━━━━━━")
 
         parts.append(f"\n{title}")
@@ -99,39 +139,292 @@ def build_result_text(results):
             parts.append("없음")
             continue
 
-        for (tier, low, high), items in sorted(results[status].items()):
-            parts.append(f"\n【{tier}차】 ({low}~{high}원)")
+        for (tier, low, high), items in sorted(
+            results[status].items()
+        ):
+            parts.append(
+                f"\n【{tier}차】 ({low}~{high}원)"
+            )
             parts.extend(items)
 
     parts.append("\n━━━━━━━━━━━━━━")
-    parts.append("\n※ 중간값 이하의 음식은 표시되지 않습니다.")
-    parts.append("※ 추천은 변동 시세의 중간값 이상, 고점은 상위 10% 구간을 기준으로 선정됩니다.")
+    parts.append(
+        "\n※ 중간값 이하의 음식은 표시되지 않습니다."
+    )
+    parts.append(
+        "※ 추천은 변동 시세의 중간값 이상, "
+        "고점은 상위 10% 구간을 기준으로 선정됩니다."
+    )
+
     return "\n".join(parts)
 
 
-class CookingModal(discord.ui.Modal, title="요리 변동상점 분석"):
-    content = discord.ui.TextInput(
-        label="요리 변동상점 내용을 붙여넣어 주세요",
-        style=discord.TextStyle.paragraph,
-        placeholder="🍳[아스파라거스 샐러드] | 53 → 57",
-        required=True,
-        max_length=4000,
+class Cooking(commands.Cog):
+    cooking_group = app_commands.Group(
+        name="요리",
+        description="요리 변동상점 기능입니다.",
     )
 
-    async def on_submit(self, interaction: discord.Interaction):
-        results = parse_cooking(str(self.content))
-        message = build_result_text(results)
-        await interaction.response.send_message(message)
+    channel_group = app_commands.Group(
+        name="변동채널",
+        description="요리 변동상점 채널을 관리합니다.",
+        parent=cooking_group,
+    )
 
-
-class Cooking(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.update_locks: dict[int, asyncio.Lock] = {}
 
-    @app_commands.command(name="요리", description="요리 변동상점을 분석합니다.")
-    async def cooking(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(CookingModal())
+    def get_guild_lock(self, guild_id: int) -> asyncio.Lock:
+        if guild_id not in self.update_locks:
+            self.update_locks[guild_id] = asyncio.Lock()
+
+        return self.update_locks[guild_id]
+
+    @channel_group.command(
+        name="설정",
+        description="현재 채널을 요리 변동상점 채널로 설정합니다.",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def set_channel(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "❌ 서버 안에서만 사용할 수 있는 명령어입니다.",
+                ephemeral=True,
+            )
+            return
+
+        if not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "❌ 일반 텍스트 채널에서 실행해주세요.",
+                ephemeral=True,
+            )
+            return
+
+        bot_member = interaction.guild.me
+
+        if bot_member is None:
+            await interaction.response.send_message(
+                "❌ 도동봇의 서버 권한을 확인할 수 없습니다.",
+                ephemeral=True,
+            )
+            return
+
+        permissions = interaction.channel.permissions_for(bot_member)
+        missing_permissions = []
+
+        if not permissions.view_channel:
+            missing_permissions.append("채널 보기")
+
+        if not permissions.send_messages:
+            missing_permissions.append("메시지 보내기")
+
+        if not permissions.read_message_history:
+            missing_permissions.append("메시지 기록 보기")
+
+        if not permissions.manage_messages:
+            missing_permissions.append("메시지 관리")
+
+        if missing_permissions:
+            permission_text = "\n".join(
+                f"• {permission}"
+                for permission in missing_permissions
+            )
+
+            await interaction.response.send_message(
+                "❌ 도동봇에게 필요한 채널 권한이 부족합니다.\n\n"
+                f"{permission_text}\n\n"
+                "권한을 허용한 뒤 다시 설정해주세요.",
+                ephemeral=True,
+            )
+            return
+
+        set_channel_id(
+            interaction.guild.id,
+            "cooking",
+            interaction.channel.id,
+        )
+
+        await interaction.response.send_message(
+            "✅ 요리 변동상점 채널을 설정했습니다.\n\n"
+            f"설정된 채널: {interaction.channel.mention}\n\n"
+            "이제 동글랜드의 요리 변동상점 내용을 "
+            "이 채널에 그대로 붙여넣으면 자동으로 분석됩니다.",
+            ephemeral=True,
+        )
+
+    @channel_group.command(
+        name="확인",
+        description="현재 설정된 요리 변동상점 채널을 확인합니다.",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def check_channel(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "❌ 서버 안에서만 사용할 수 있는 명령어입니다.",
+                ephemeral=True,
+            )
+            return
+
+        channel_id = get_channel_id(
+            interaction.guild.id,
+            "cooking",
+        )
+
+        if channel_id is None:
+            await interaction.response.send_message(
+                "❌ 현재 설정된 요리 변동상점 채널이 없습니다.\n\n"
+                "원하는 채널에서 `/요리 변동채널 설정`을 "
+                "사용해주세요.",
+                ephemeral=True,
+            )
+            return
+
+        channel = interaction.guild.get_channel(channel_id)
+
+        if channel is None:
+            await interaction.response.send_message(
+                "⚠️ 설정된 채널을 찾을 수 없습니다.\n\n"
+                "채널이 삭제되었을 수 있으므로 "
+                "다시 설정해주세요.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            "🍳 현재 요리 변동상점 채널\n\n"
+            f"{channel.mention}",
+            ephemeral=True,
+        )
+
+    @channel_group.command(
+        name="해제",
+        description="요리 변동상점 채널 설정을 해제합니다.",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def remove_channel(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "❌ 서버 안에서만 사용할 수 있는 명령어입니다.",
+                ephemeral=True,
+            )
+            return
+
+        removed = remove_channel_id(
+            interaction.guild.id,
+            "cooking",
+        )
+
+        if not removed:
+            await interaction.response.send_message(
+                "❌ 현재 설정된 요리 변동상점 채널이 없습니다.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            "✅ 요리 변동상점 채널 설정을 해제했습니다.",
+            ephemeral=True,
+        )
+
+    async def send_invalid_message_dm(
+        self,
+        member: discord.Member,
+        channel: discord.TextChannel,
+    ) -> None:
+        try:
+            await member.send(
+                "❌ 요리 변동상점 채널에는 "
+                "변동시세 내용만 입력할 수 있습니다.\n\n"
+                f"잘못 입력한 메시지는 {channel.mention}에서 "
+                "자동으로 삭제되었습니다."
+            )
+        except discord.Forbidden:
+            pass
+
+    async def delete_previous_results(
+        self,
+        channel: discord.TextChannel,
+    ) -> None:
+        if self.bot.user is None:
+            return
+
+        async for previous_message in channel.history(limit=50):
+            if previous_message.author.id != self.bot.user.id:
+                continue
+
+            if not previous_message.content.startswith(
+                "🍳 **요리 변동상점**"
+            ):
+                continue
+
+            try:
+                await previous_message.delete()
+            except (discord.Forbidden, discord.NotFound):
+                pass
+
+    @commands.Cog.listener()
+    async def on_message(
+        self,
+        message: discord.Message,
+    ) -> None:
+        if message.author.bot:
+            return
+
+        if message.guild is None:
+            return
+
+        if not isinstance(message.channel, discord.TextChannel):
+            return
+
+        configured_channel_id = get_channel_id(
+            message.guild.id,
+            "cooking",
+        )
+
+        if configured_channel_id is None:
+            return
+
+        if message.channel.id != configured_channel_id:
+            return
+
+        lock = self.get_guild_lock(message.guild.id)
+
+        async with lock:
+            if not contains_valid_cooking_data(message.content):
+                try:
+                    await message.delete()
+                except (discord.Forbidden, discord.NotFound):
+                    return
+
+                if isinstance(message.author, discord.Member):
+                    await self.send_invalid_message_dm(
+                        message.author,
+                        message.channel,
+                    )
+
+                return
+
+            results = parse_cooking(message.content)
+            result_text = build_result_text(results)
+
+            try:
+                await message.delete()
+            except (discord.Forbidden, discord.NotFound):
+                return
+
+            await self.delete_previous_results(message.channel)
+            await message.channel.send(result_text)
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
     await bot.add_cog(Cooking(bot))
