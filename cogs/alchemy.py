@@ -1,18 +1,34 @@
+import asyncio
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-RUNE_RANGE = {
-    "화염저항": (180, 270),
-    "호흡": (207, 311),
-    "신속": (228, 342),
-    "성급": (402, 603),
-    "힘": (405, 608),
+from utils.channel_manager import (
+    get_channel_id,
+    remove_channel_id,
+    set_channel_id,
+)
+
+
+RUNE_PRICE_RANGE = {
+    "룬 ㅣ 화염저항": (180, 270),
+    "룬 ㅣ 호흡": (207, 311),
+    "룬 ㅣ 신속": (228, 342),
+    "룬 ㅣ 성급": (402, 603),
+    "룬 ㅣ 힘": (405, 608),
 }
 
 
-def get_status(price: int, low: int, high: int):
+ALCHEMY_PATTERN = re.compile(
+    r"\[(.*?)\]\s*\|\s*(\d+)\s*→\s*(\d+)"
+)
+
+
+def get_status(price: int, low: int, high: int) -> str:
     mid = (low + high) / 2
     high_point = low + (high - low) * 0.9
 
@@ -25,121 +41,366 @@ def get_status(price: int, low: int, high: int):
     return "저점"
 
 
-def parse_alchemy(text: str):
+def contains_valid_alchemy_data(text: str) -> bool:
+    matches = ALCHEMY_PATTERN.findall(text)
 
-    result = {
+    if not matches:
+        return False
+
+    for raw_name, _, _ in matches:
+        name = raw_name.strip()
+
+        if name in RUNE_PRICE_RANGE:
+            return True
+
+    return False
+
+
+def parse_alchemy(text: str) -> dict:
+    results = {
         "고점": [],
         "추천": [],
-        "저점": []
     }
 
-    pattern = r"\[(.*?)\]\s*\|\s*(\d+)\s*→\s*(\d+)"
+    for raw_name, _, current_price in ALCHEMY_PATTERN.findall(text):
+        name = raw_name.strip()
+        price_range = RUNE_PRICE_RANGE.get(name)
 
-    for raw_name, old_price, new_price in re.findall(pattern, text):
-
-        # 세로선 통일
-        name = raw_name.replace("ㅣ", "|")
-
-        # 룬 앞부분 제거 (띄어쓰기 전부 대응)
-        name = (
-            name.replace("룬 |", "")
-                .replace("룬|", "")
-                .replace("룬  |", "")
-                .replace("룬 ㅣ", "")
-                .replace("룬ㅣ", "")
-                .strip()
-        )
-
-        # 어색한 결정 제외
-        if "어색한 결정" in name:
+        if price_range is None:
             continue
 
-        if name not in RUNE_RANGE:
-            print("인식 실패:", name)   # 디버깅용
+        price = int(current_price)
+        low, high = price_range
+        status = get_status(price, low, high)
+
+        if status == "저점":
             continue
 
-        low, high = RUNE_RANGE[name]
-
-        status = get_status(int(new_price), low, high)
-
-        result[status].append(
-            f"🧪 **룬 | {name}** - {new_price}원"
+        results[status].append(
+            (name, price, low, high)
         )
 
-    return result
+    return results
 
 
-def build_text(result):
+def build_result_text(
+    results: dict,
+    updater_name: str,
+    time_text: str,
+) -> str:
+    parts = ["🧪 **연금 변동상점**"]
 
-    text = "🧪 **연금 변동상점**\n"
+    for status, title in [
+        ("고점", "🔥 고점"),
+        ("추천", "⭐ 추천"),
+    ]:
+        if status == "추천":
+            parts.append("\n━━━━━━━━━━━━━━")
 
-    text += "\n🔥 고점\n\n"
+        parts.append(f"\n{title}")
 
-    if result["고점"]:
-        text += "\n".join(result["고점"])
-    else:
-        text += "없음"
+        items = results.get(status, [])
 
-    text += "\n\n━━━━━━━━━━━━\n"
+        if not items:
+            parts.append("없음")
+            continue
 
-    text += "\n⭐ 추천\n\n"
+        for name, price, low, high in items:
+            parts.append(
+                f"🧪 **{name}** - {price}원 "
+                f"({low}~{high}원)"
+            )
 
-    if result["추천"]:
-        text += "\n".join(result["추천"])
-    else:
-        text += "없음"
-
-    text += "\n\n━━━━━━━━━━━━\n"
-
-    text += "\n📉 저점\n\n"
-
-    if result["저점"]:
-        text += "\n".join(result["저점"])
-    else:
-        text += "없음"
-
-    text += "\n\n━━━━━━━━━━━━\n"
-
-    text += "\n📌 변동 시세\n\n"
-
-    for name, (low, high) in RUNE_RANGE.items():
-        text += f"룬 | {name}  {low}~{high}원\n"
-
-    return text
-
-
-class AlchemyModal(discord.ui.Modal, title="연금 변동상점 분석"):
-
-    content = discord.ui.TextInput(
-        label="연금 변동 내용을 붙여넣어 주세요.",
-        style=discord.TextStyle.paragraph,
-        max_length=4000
+    parts.append("\n━━━━━━━━━━━━━━")
+    parts.append(
+        "\n※ 중간값 이하의 룬은 표시되지 않습니다."
+    )
+    parts.append(
+        "※ 추천은 변동 시세의 중간값 이상, "
+        "고점은 상위 10% 구간을 기준으로 선정됩니다."
     )
 
-    async def on_submit(self, interaction: discord.Interaction):
+    parts.append("")
+    parts.append(f"> 업데이트 : {updater_name} / {time_text}")
 
-        result = parse_alchemy(str(self.content))
-
-        await interaction.response.send_message(
-            build_text(result)
-        )
+    return "\n".join(parts)
 
 
 class Alchemy(commands.Cog):
-
-    def __init__(self, bot):
-        self.bot = bot
-
-    @app_commands.command(
+    alchemy_group = app_commands.Group(
         name="연금",
-        description="연금 변동상점을 분석합니다."
+        description="연금 변동상점 기능입니다.",
     )
-    async def alchemy(self, interaction: discord.Interaction):
 
-        await interaction.response.send_modal(
-            AlchemyModal()
+    channel_group = app_commands.Group(
+        name="변동채널",
+        description="연금 변동상점 채널을 관리합니다.",
+        parent=alchemy_group,
+    )
+
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.update_locks: dict[int, asyncio.Lock] = {}
+
+    def get_guild_lock(self, guild_id: int) -> asyncio.Lock:
+        if guild_id not in self.update_locks:
+            self.update_locks[guild_id] = asyncio.Lock()
+
+        return self.update_locks[guild_id]
+
+    @channel_group.command(
+        name="설정",
+        description="현재 채널을 연금 변동상점 채널로 설정합니다.",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def set_channel(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "❌ 서버 안에서만 사용할 수 있는 명령어입니다.",
+                ephemeral=True,
+            )
+            return
+
+        if not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "❌ 일반 텍스트 채널에서 실행해주세요.",
+                ephemeral=True,
+            )
+            return
+
+        bot_member = interaction.guild.me
+
+        if bot_member is None:
+            await interaction.response.send_message(
+                "❌ 도동봇의 서버 권한을 확인할 수 없습니다.",
+                ephemeral=True,
+            )
+            return
+
+        permissions = interaction.channel.permissions_for(bot_member)
+        missing_permissions = []
+
+        if not permissions.view_channel:
+            missing_permissions.append("채널 보기")
+
+        if not permissions.send_messages:
+            missing_permissions.append("메시지 보내기")
+
+        if not permissions.read_message_history:
+            missing_permissions.append("메시지 기록 보기")
+
+        if not permissions.manage_messages:
+            missing_permissions.append("메시지 관리")
+
+        if missing_permissions:
+            permission_text = "\n".join(
+                f"• {permission}"
+                for permission in missing_permissions
+            )
+
+            await interaction.response.send_message(
+                "❌ 도동봇에게 필요한 채널 권한이 부족합니다.\n\n"
+                f"{permission_text}\n\n"
+                "권한을 허용한 뒤 다시 설정해주세요.",
+                ephemeral=True,
+            )
+            return
+
+        set_channel_id(
+            interaction.guild.id,
+            "alchemy",
+            interaction.channel.id,
         )
 
+        await interaction.response.send_message(
+            "✅ 연금 변동상점 채널을 설정했습니다.\n\n"
+            f"설정된 채널: {interaction.channel.mention}\n\n"
+            "이제 동글랜드의 연금 변동상점 내용을 "
+            "이 채널에 그대로 붙여넣으면 자동으로 분석됩니다.",
+            ephemeral=True,
+        )
 
-async def setup(bot):
+    @channel_group.command(
+        name="확인",
+        description="현재 설정된 연금 변동상점 채널을 확인합니다.",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def check_channel(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "❌ 서버 안에서만 사용할 수 있는 명령어입니다.",
+                ephemeral=True,
+            )
+            return
+
+        channel_id = get_channel_id(
+            interaction.guild.id,
+            "alchemy",
+        )
+
+        if channel_id is None:
+            await interaction.response.send_message(
+                "❌ 현재 설정된 연금 변동상점 채널이 없습니다.\n\n"
+                "원하는 채널에서 `/연금 변동채널 설정`을 "
+                "사용해주세요.",
+                ephemeral=True,
+            )
+            return
+
+        channel = interaction.guild.get_channel(channel_id)
+
+        if channel is None:
+            await interaction.response.send_message(
+                "⚠️ 설정된 채널을 찾을 수 없습니다.\n\n"
+                "채널이 삭제되었을 수 있으므로 "
+                "다시 설정해주세요.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            "🧪 현재 연금 변동상점 채널\n\n"
+            f"{channel.mention}",
+            ephemeral=True,
+        )
+
+    @channel_group.command(
+        name="해제",
+        description="연금 변동상점 채널 설정을 해제합니다.",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def remove_channel(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "❌ 서버 안에서만 사용할 수 있는 명령어입니다.",
+                ephemeral=True,
+            )
+            return
+
+        removed = remove_channel_id(
+            interaction.guild.id,
+            "alchemy",
+        )
+
+        if not removed:
+            await interaction.response.send_message(
+                "❌ 현재 설정된 연금 변동상점 채널이 없습니다.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            "✅ 연금 변동상점 채널 설정을 해제했습니다.",
+            ephemeral=True,
+        )
+
+    async def send_invalid_message_dm(
+        self,
+        member: discord.Member,
+        channel: discord.TextChannel,
+    ) -> None:
+        try:
+            await member.send(
+                "❌ 연금 변동상점 채널에는 "
+                "변동시세 내용만 입력할 수 있습니다.\n\n"
+                f"잘못 입력한 메시지는 {channel.mention}에서 "
+                "자동으로 삭제되었습니다."
+            )
+        except discord.Forbidden:
+            pass
+
+    async def delete_previous_results(
+        self,
+        channel: discord.TextChannel,
+    ) -> None:
+        if self.bot.user is None:
+            return
+
+        async for previous_message in channel.history(limit=50):
+            if previous_message.author.id != self.bot.user.id:
+                continue
+
+            if not previous_message.content.startswith(
+                "🧪 **연금 변동상점**"
+            ):
+                continue
+
+            try:
+                await previous_message.delete()
+            except (discord.Forbidden, discord.NotFound):
+                pass
+
+    @commands.Cog.listener()
+    async def on_message(
+        self,
+        message: discord.Message,
+    ) -> None:
+        if message.author.bot:
+            return
+
+        if message.guild is None:
+            return
+
+        if not isinstance(message.channel, discord.TextChannel):
+            return
+
+        configured_channel_id = get_channel_id(
+            message.guild.id,
+            "alchemy",
+        )
+
+        if configured_channel_id is None:
+            return
+
+        if message.channel.id != configured_channel_id:
+            return
+
+        lock = self.get_guild_lock(message.guild.id)
+
+        async with lock:
+            if not contains_valid_alchemy_data(message.content):
+                try:
+                    await message.delete()
+                except (discord.Forbidden, discord.NotFound):
+                    return
+
+                if isinstance(message.author, discord.Member):
+                    await self.send_invalid_message_dm(
+                        message.author,
+                        message.channel,
+                    )
+
+                return
+
+            results = parse_alchemy(message.content)
+
+            time_text = datetime.now(
+                ZoneInfo("Asia/Seoul")
+            ).strftime("%Y-%m-%d %H:%M")
+
+            result_text = build_result_text(
+                results,
+                message.author.display_name,
+                time_text,
+            )
+
+            try:
+                await message.delete()
+            except (discord.Forbidden, discord.NotFound):
+                return
+
+            await self.delete_previous_results(message.channel)
+            await message.channel.send(result_text)
+
+
+async def setup(bot: commands.Bot):
     await bot.add_cog(Alchemy(bot))
