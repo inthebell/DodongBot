@@ -15,6 +15,8 @@ bot = commands.Bot(
 )
 
 DODONG_GUILD_ID = 1517850860322029618
+OWNER_ID = 478834154595811328
+
 @bot.event
 async def on_ready():
     print(f"{bot.user} 로그인 완료!")
@@ -50,15 +52,81 @@ async def on_message(message):
                 print(f"문의 로그 채널을 찾지 못했습니다: {e}")
                 return
 
-        embed = discord.Embed(
-            title="📩 새로운 DM 문의",
-            description=message.content or "(내용 없음)",
-            color=discord.Color.blurple()
+        thread_name = f"📩 {message.author.name}님의 문의 ({message.author.id})"
+        inquiry_thread = None
+
+        for thread in log_channel.threads:
+            if thread.name == thread_name:
+                inquiry_thread = thread
+                break
+
+        if inquiry_thread is None:
+            try:
+                async for thread in log_channel.archived_threads(limit=100):
+                    if thread.name == thread_name:
+                        inquiry_thread = thread
+                        break
+            except Exception as e:
+                print(f"보관된 문의 스레드 검색 오류: {e}")
+
+        if inquiry_thread is None:
+            starter_embed = discord.Embed(
+                title="📩 새 문의 사용자",
+                description=(
+                    f"**사용자:** {message.author}\n"
+                    f"**사용자 ID:** `{message.author.id}`"
+                ),
+                color=discord.Color.blurple(),
+                timestamp=discord.utils.utcnow()
+            )
+
+            starter_embed.set_thumbnail(
+                url=message.author.display_avatar.url
+            )
+
+            starter_embed.set_footer(
+                text="DodongBot Support"
+            )
+
+            starter_message = await log_channel.send(
+                embed=starter_embed
+            )
+
+            inquiry_thread = await starter_message.create_thread(
+                name=thread_name,
+                auto_archive_duration=10080
+            )
+
+        elif inquiry_thread.archived:
+            try:
+                await inquiry_thread.edit(archived=False)
+            except Exception as e:
+                print(f"문의 스레드 다시 열기 오류: {e}")
+
+        await inquiry_thread.send(
+            f"<@{OWNER_ID}> 🔔 **새로운 문의가 도착했습니다.**",
+            allowed_mentions=discord.AllowedMentions(
+                users=True,
+                roles=False,
+                everyone=False
+            )
         )
 
-        embed.add_field(
-            name="보낸 사람",
-            value=f"{message.author} (`{message.author.id}`)",
+        inquiry_embed = discord.Embed(
+            title="📩 사용자 문의",
+            description=message.content or "(내용 없음)",
+            color=discord.Color.blurple(),
+            timestamp=message.created_at
+        )
+
+        inquiry_embed.set_author(
+            name=str(message.author),
+            icon_url=message.author.display_avatar.url
+        )
+
+        inquiry_embed.add_field(
+            name="사용자 ID",
+            value=f"`{message.author.id}`",
             inline=False
         )
 
@@ -66,15 +134,28 @@ async def on_message(message):
             attachment_links = "\n".join(
                 attachment.url for attachment in message.attachments
             )
-            embed.add_field(
+
+            inquiry_embed.add_field(
                 name="첨부파일",
                 value=attachment_links,
                 inline=False
             )
 
-        embed.set_thumbnail(url=message.author.display_avatar.url)
+            first_attachment = message.attachments[0]
 
-        await log_channel.send(embed=embed)
+            if (
+                first_attachment.content_type
+                and first_attachment.content_type.startswith("image/")
+            ):
+                inquiry_embed.set_image(
+                    url=first_attachment.url
+                )
+
+        inquiry_embed.set_footer(
+            text="DodongBot Support"
+        )
+
+        await inquiry_thread.send(embed=inquiry_embed)
 
     await bot.process_commands(message)
 
