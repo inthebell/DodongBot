@@ -88,6 +88,7 @@ async def load_extensions():
     await bot.load_extension("cogs.level")
     await bot.load_extension("cogs.verify")
     await bot.load_extension("cogs.serverlist")
+    await bot.load_extension("cogs.dmreply")
 async def main():
     async with bot:
         await load_extensions()
