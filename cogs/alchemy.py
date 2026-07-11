@@ -7,6 +7,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from utils.log_manager import send_use_log
+
 from utils.channel_manager import (
     get_channel_id,
     remove_channel_id,
@@ -401,6 +403,13 @@ class Alchemy(commands.Cog):
             await self.delete_previous_results(message.channel)
             await message.channel.send(result_text)
 
+            await send_use_log(
+                bot=self.bot,
+                title="🧪 연금 분석",
+                user=message.author,
+                guild=message.guild,
+                channel=message.channel
+            )
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Alchemy(bot))

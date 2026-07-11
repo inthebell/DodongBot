@@ -2,6 +2,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from utils.log_manager import send_use_log
+
 from utils.channel_manager import (
     get_channel_id,
     remove_channel_id,
@@ -247,6 +249,16 @@ class Wiki(commands.Cog):
                 embed=embed,
                 mention_author=False,
             )
+
+            await send_use_log(
+                bot=self.bot,
+                title="📚 위키 검색",
+                user=message.author,
+                guild=message.guild,
+                channel=message.channel,
+                search_query=query
+            )
+
             return
 
         embed = discord.Embed(
@@ -278,6 +290,14 @@ class Wiki(commands.Cog):
             mention_author=False,
         )
 
+        await send_use_log(
+            bot=self.bot,
+            title="📚 위키 검색",
+            user=message.author,
+            guild=message.guild,
+            channel=message.channel,
+            search_query=query
+        )
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Wiki(bot))
