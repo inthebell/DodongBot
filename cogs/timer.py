@@ -5,6 +5,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from utils.log_manager import send_use_log
+
 from utils.channel_manager import (
     get_channel_id,
     remove_channel_id,
@@ -17,9 +19,9 @@ KST = timezone(timedelta(hours=9))
 TIMER_TYPES = {
     "농부": {
         "keywords": {"농부", "ㄴㅂ"},
-        "seconds": 10,
+        "seconds": 17 * 60,
         "emoji": "🌱",
-        "time_text": "10초",
+        "time_text": "17분",
         "start_name": "농부",
         "complete_message": (
             "{mention}님 🌾 작물이 모두 자랐습니다!\n"
@@ -239,6 +241,15 @@ class Timer(commands.Cog):
         timer_name = self.find_timer_name(content)
 
         if timer_name is None:
+            try:
+                await message.delete()
+            except (
+                discord.Forbidden,
+                discord.NotFound,
+                discord.HTTPException,
+            ):
+                pass
+
             return
 
         try:
@@ -353,6 +364,14 @@ class Timer(commands.Cog):
                 roles=False,
                 everyone=False,
             ),
+        )
+
+        await send_use_log(
+            bot=self.bot,
+            title=f"{timer_data['emoji']} {timer_name} 타이머 시작",
+            user=message.author,
+            guild=message.guild,
+            channel=message.channel,
         )
 
         self.active_timers[key] = {
