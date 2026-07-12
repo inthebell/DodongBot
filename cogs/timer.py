@@ -17,9 +17,9 @@ KST = timezone(timedelta(hours=9))
 TIMER_TYPES = {
     "농부": {
         "keywords": {"농부", "ㄴㅂ"},
-        "seconds": 17 * 60,
+        "seconds": 10,
         "emoji": "🌱",
-        "time_text": "17분",
+        "time_text": "10초",
         "start_name": "농부",
         "complete_message": (
             "{mention}님 🌾 작물이 모두 자랐습니다!\n"
@@ -114,28 +114,21 @@ class Timer(commands.Cog):
             ephemeral=True,
         )
 
-        guide_message = await interaction.channel.send(
-            "## ⏰ 도동봇 타이머 사용법\n\n"
-            "아래 단어를 입력하면 개인 타이머가 시작됩니다.\n\n"
-            "🌱 **농부** 또는 `ㄴㅂ` · 17분\n"
-            "🍳 **요리** 또는 `ㅇㄹ` · 26분 40초\n"
-            "🤿 **다이버** 또는 `ㄷㅇㅂ` · 1시간\n"
-            "💝 **호감도** 또는 `ㅎㄱㄷ` · 6시간\n\n"
-            "현재 남은 시간을 확인하려면 **타이머**라고 입력해 주세요."
+        guide_embed = discord.Embed(
+            title="⏰ 도동봇 타이머 사용법",
+            description=(
+                "아래 단어를 입력하면 개인 타이머가 시작됩니다.\n\n"
+                "🌱 **농부** 또는 `ㄴㅂ` ·· 17분\n"
+                "🍳 **요리** 또는 `ㅇㄹ` ·· 26분 40초\n"
+                "🤿 **다이버** 또는 `ㄷㅇㅂ` ·· 1시간\n"
+                "💝 **호감도** 또는 `ㅎㄱㄷ` ·· 6시간\n\n"
+                "현재 남은 시간을 확인하려면 "
+                "**타이머**라고 입력해 주세요."
+            ),
+            color=discord.Color.blurple(),
         )
 
-        try:
-            await guide_message.pin(
-                reason="도동봇 타이머 사용법 안내",
-            )
-        except discord.Forbidden:
-            await interaction.followup.send(
-                "⚠️ 타이머 채널은 설정했지만 안내 메시지를 고정하지 못했습니다.\n"
-                "도동봇의 메시지 관리 권한을 확인해 주세요.",
-                ephemeral=True,
-            )
-        except discord.HTTPException:
-            pass
+        await interaction.channel.send(embed=guide_embed)
 
     @timer_group.command(
         name="채널확인",
@@ -329,20 +322,37 @@ class Timer(commands.Cog):
             ):
                 pass
 
+        end_time = datetime.now(KST) + timedelta(
+            seconds=timer_data["seconds"]
+        )
+
+        end_timestamp = int(end_time.timestamp())
+
+        start_embed = discord.Embed(
+            title=(
+                f"{timer_data['emoji']} "
+                f"{timer_data['start_name']} 타이머 시작"
+            ),
+            description=(
+                f"{timer_data['start_name']} 타이머를 시작했습니다.\n"
+                f"**{timer_data['time_text']} 뒤에 알려드릴게요!**\n\n"
+                f"⏰ 남은 시간: <t:{end_timestamp}:R>"
+            ),
+            color=discord.Color.blurple(),
+        )
+
+        start_embed.set_footer(
+            text=f"{message.author.display_name}님의 타이머"
+        )
+
         start_message = await message.channel.send(
-            f"{timer_data['emoji']} "
-            f"{message.author.mention}님의 "
-            f"{timer_data['start_name']} 타이머를 시작했습니다.\n\n"
-            f"{timer_data['time_text']} 뒤에 알려드릴게요!",
+            content=f"{message.author.mention}님",
+            embed=start_embed,
             allowed_mentions=discord.AllowedMentions(
                 users=True,
                 roles=False,
                 everyone=False,
             ),
-        )
-
-        end_time = datetime.now(KST) + timedelta(
-            seconds=timer_data["seconds"]
         )
 
         self.active_timers[key] = {
@@ -407,10 +417,29 @@ class Timer(commands.Cog):
 
         mention = f"<@{timer_info['user_id']}>"
 
-        complete_message = await channel.send(
-            timer_data["complete_message"].format(
-                mention=mention
+        complete_text = timer_data["complete_message"].format(
+            mention=mention
+        )
+
+        complete_lines = complete_text.split("\n", 1)
+
+        complete_embed = discord.Embed(
+            title=f"{timer_data['emoji']} {timer_data['start_name']} 타이머 완료",
+            description=(
+                complete_lines[1]
+                if len(complete_lines) > 1
+                else complete_lines[0]
             ),
+            color=discord.Color.green(),
+        )
+
+        complete_embed.set_footer(
+            text="도동봇 타이머"
+        )
+
+        complete_message = await channel.send(
+            content=f"{mention}님",
+            embed=complete_embed,
             allowed_mentions=discord.AllowedMentions(
                 users=True,
                 roles=False,
@@ -468,21 +497,30 @@ class Timer(commands.Cog):
                 f"{timer_name} · {remaining_text} 남음"
             )
 
-        if not timer_lines:
-            response = await message.channel.send(
-                f"{message.author.mention}님 ⏰ "
-                "현재 실행 중인 타이머가 없습니다.",
-                allowed_mentions=discord.AllowedMentions(
-                    users=True,
-                    roles=False,
-                    everyone=False,
-                ),
+        if timer_lines:
+            description = (
+                "\n".join(timer_lines)
+                + "\n\n※ 해당 메시지는 10초 뒤 자동으로 삭제됩니다."
             )
         else:
-            response = await message.channel.send(
-                f"⏰ **{message.author.display_name}님의 실행 중인 타이머**\n\n"
-                + "\n".join(timer_lines)
+            description = (
+                "현재 실행 중인 타이머가 없습니다.\n\n"
+                "※ 해당 메시지는 10초 뒤 자동으로 삭제됩니다."
             )
+
+        timer_embed = discord.Embed(
+            title=f"⏰ {message.author.display_name}님의 실행 중인 타이머",
+            description=description,
+            color=discord.Color.gold(),
+        )
+
+        timer_embed.set_footer(
+            text="도동봇 타이머"
+        )
+
+        response = await message.channel.send(
+            embed=timer_embed
+        )
 
         await asyncio.sleep(10)
 
