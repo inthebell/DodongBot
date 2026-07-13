@@ -85,34 +85,22 @@ def create_market_embed(
     embed.add_field(
         name="개당 평균가",
         value=(
-            f"**{stats['average_unit_price']:,}냥**"
+            f"**{stats['average_unit_price']:,}냥**\n"
+            "\u200b"
         ),
         inline=False,
     )
 
     embed.add_field(
-        name="\u200b",
-        value="\u200b",
-        inline=False,
-    )
-
-    embed.add_field(
-        name=(
-            f"📦 {stats['representative_quantity']}개 기준"
-        ),
+        name=f"📦 {stats['representative_quantity']}개 기준",
         value=(
             f"평균 **{stats['average_total']:,}냥**\n"
             f"범위 "
             f"{stats['minimum_total']:,}"
             f" ~ "
-            f"{stats['maximum_total']:,}냥"
+            f"{stats['maximum_total']:,}냥\n"
+            "\u200b"
         ),
-        inline=False,
-    )
-
-    embed.add_field(
-        name="\u200b",
-        value="\u200b",
         inline=False,
     )
 
@@ -134,6 +122,10 @@ def create_market_embed(
     notice_lines = [
         "통합거래소 구매 완료 내역 기준",
         "최근 최대 72시간 데이터로 계산",
+        (
+            "마지막 업데이트 : "
+            f"{stats['latest_trade_date'].strftime('%Y-%m-%d %H:%M')}"
+        ),
     ]
 
     if stats["excluded_trade_count"] > 0:
@@ -142,7 +134,7 @@ def create_market_embed(
         )
 
     embed.set_footer(
-        text=" · ".join(notice_lines)
+        text="\n".join(notice_lines)
     )
 
     if stats["used_trade_count"] <= 4:
