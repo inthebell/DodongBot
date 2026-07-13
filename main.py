@@ -171,6 +171,7 @@ async def load_extensions():
     await bot.load_extension("cogs.serverlist")
     await bot.load_extension("cogs.dmreply")
     await bot.load_extension("cogs.timer")
+    await bot.load_extension("cogs.market")
 async def main():
     async with bot:
         await load_extensions()
