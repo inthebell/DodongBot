@@ -226,6 +226,14 @@ class MarketSelect(discord.ui.Select):
             view=None,
         )
 
+        await send_market_log(
+            bot=self.bot,
+            user=interaction.user,
+            guild=interaction.guild,
+            channel=interaction.channel,
+            keyword=self.keyword,
+            result=selected_item,
+        )
 
 class MarketSelectView(discord.ui.View):
     def __init__(
