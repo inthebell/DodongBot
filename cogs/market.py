@@ -17,6 +17,7 @@ from utils.channel_manager import (
     set_channel_id,
 )
 
+from utils.log_manager import send_market_log
 
 DB_PATH = (
     Path(__file__).resolve().parent.parent
@@ -119,6 +120,29 @@ def create_market_embed(
         inline=False,
     )
 
+    embed.add_field(
+        name="\u200b",
+        value="━━━━━━━━━━━━━━━━━━━━",
+        inline=False,
+    )
+
+    if stats["used_trade_count"] <= 4:
+        embed.add_field(
+            name="⚠️ 거래 데이터 안내",
+            value=(
+                f"거래 데이터가 "
+                f"{stats['used_trade_count']}건으로 적습니다.\n"
+                "시세 참고 후 신중하게 거래해주세요."
+            ),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="\u200b",
+            value="━━━━━━━━━━━━━━━━━━━━",
+            inline=False,
+        )
+
     notice_lines = [
         "통합거래소 구매 완료 내역 기준",
         "최근 최대 72시간 데이터로 계산",
@@ -133,20 +157,11 @@ def create_market_embed(
             f"이상치 {stats['excluded_trade_count']}건 제외"
         )
 
-    embed.set_footer(
-        text="\n".join(notice_lines)
+    embed.add_field(
+        name="\u200b",
+        value="\n".join(notice_lines),
+        inline=False,
     )
-
-    if stats["used_trade_count"] <= 4:
-        embed.add_field(
-            name="⚠️ 거래 데이터 안내",
-            value=(
-                f"거래 데이터가 "
-                f"{stats['used_trade_count']}건으로 적습니다.\n"
-                "시세 참고 후 신중하게 거래해주세요."
-            ),
-            inline=False,
-        )
 
     return embed
 
@@ -446,6 +461,15 @@ class Market(commands.Cog):
         )
 
         if not matched_items:
+            await send_market_log(
+                bot=self.bot,
+                user=message.author,
+                guild=message.guild,
+                channel=message.channel,
+                keyword=keyword,
+                result="검색 결과 없음",
+            )
+
             await self.show_not_found(
                 searching_message
             )
@@ -467,6 +491,15 @@ class Market(commands.Cog):
             await searching_message.edit(
                 content=None,
                 embed=embed,
+            )
+
+            await send_market_log(
+                bot=self.bot,
+                user=message.author,
+                guild=message.guild,
+                channel=message.channel,
+                keyword=keyword,
+                result=matched_items[0],
             )
             return
 
