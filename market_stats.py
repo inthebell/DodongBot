@@ -346,6 +346,7 @@ def print_recent_stats(stats: dict) -> None:
     print()
     print("※ 통합거래소 구매 완료 내역 기준")
     print("※ 최근 최대 72시간 데이터로 계산")
+    print(f"※ 마지막 업데이트 : {stats['latest_trade_date'].strftime('%Y-%m-%d %H:%M')}")
 
     if stats["used_trade_count"] <= 4:
         print()

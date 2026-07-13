@@ -27,6 +27,19 @@ class Help(commands.Cog):
         )
 
         embed.add_field(
+            name="💰 시세 조회",
+            value=(
+                "**/시세 채널설정**\n"
+                "현재 채널을 시세 조회 채널로 설정합니다.\n"
+                "**/시세 채널확인**\n"
+                "설정된 시세 조회 채널을 확인합니다.\n"
+                "**/시세 채널해제**\n"
+                "시세 조회 채널 설정을 해제합니다.\n\n"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
             name="📈 변동상점",
             value=(
                 "**🍳 요리 변동상점**\n"
@@ -64,10 +77,6 @@ class Help(commands.Cog):
                 "설정된 타이머 채널을 확인합니다.\n"
                 "**/타이머 채널해제**\n"
                 "타이머 채널 설정을 해제합니다.\n\n"
-                "설정된 채널에서\n"
-                "`농부`, `요리`, `다이버`, `호감도`를 입력하면\n"
-                "개인 타이머가 시작됩니다.\n"
-                "`타이머`를 입력하면 현재 실행 중인 타이머를 확인합니다."
             ),
             inline=False
         )
@@ -84,7 +93,7 @@ class Help(commands.Cog):
             inline=False
         )
 
-        embed.set_footer(text="DodongBot v1.1.0")
+        embed.set_footer(text="DodongBot v1.3.0")
 
         await interaction.response.send_message(embed=embed)
 

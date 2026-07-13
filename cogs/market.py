@@ -91,6 +91,12 @@ def create_market_embed(
     )
 
     embed.add_field(
+        name="\u200b",
+        value="\u200b",
+        inline=False,
+    )
+
+    embed.add_field(
         name=(
             f"📦 {stats['representative_quantity']}개 기준"
         ),
@@ -101,6 +107,12 @@ def create_market_embed(
             f" ~ "
             f"{stats['maximum_total']:,}냥"
         ),
+        inline=False,
+    )
+
+    embed.add_field(
+        name="\u200b",
+        value="\u200b",
         inline=False,
     )
 
@@ -287,7 +299,7 @@ class Market(commands.Cog):
                 "예시\n"
                 "• `레몬`\n"
                 "• `셜커`\n"
-                "• `금별 아스파라거스`\n\n"
+                "• `주괴`\n\n"
                 "검색 결과가 여러 개면 목록에서 "
                 "아이템을 선택할 수 있습니다."
             ),
