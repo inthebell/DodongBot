@@ -172,9 +172,11 @@ class MarketSelect(discord.ui.Select):
         cog: "Market",
         item_names: list[str],
         user_id: int,
+        keyword: str,
     ):
         self.cog = cog
         self.user_id = user_id
+        self.keyword = keyword
 
         options = [
             discord.SelectOption(
@@ -226,14 +228,18 @@ class MarketSelect(discord.ui.Select):
             view=None,
         )
 
-        await send_market_log(
-            bot=self.bot,
-            user=interaction.user,
-            guild=interaction.guild,
-            channel=interaction.channel,
-            keyword=self.keyword,
-            result=selected_item,
-        )
+        if (
+            interaction.guild is not None
+            and interaction.channel is not None
+        ):
+            await send_market_log(
+                bot=self.cog.bot,
+                user=interaction.user,
+                guild=interaction.guild,
+                channel=interaction.channel,
+                keyword=self.keyword,
+                result=selected_item,
+            )
 
 class MarketSelectView(discord.ui.View):
     def __init__(
@@ -241,6 +247,7 @@ class MarketSelectView(discord.ui.View):
         cog: "Market",
         item_names: list[str],
         user_id: int,
+        keyword: str,
     ):
         super().__init__(timeout=60)
 
@@ -249,6 +256,7 @@ class MarketSelectView(discord.ui.View):
                 cog=cog,
                 item_names=item_names,
                 user_id=user_id,
+                keyword=keyword,
             )
         )
 
@@ -529,6 +537,7 @@ class Market(commands.Cog):
             cog=self,
             item_names=matched_items,
             user_id=message.author.id,
+            keyword=keyword,
         )
 
         await searching_message.edit(
