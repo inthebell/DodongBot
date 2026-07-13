@@ -238,21 +238,56 @@ def build_last_trade_stats(
         "latest_trade_date": trade_date,
     }
 
+def get_last_collected_at(
+    connection: sqlite3.Connection,
+) -> datetime | None:
+    try:
+        row = connection.execute(
+            """
+            SELECT value
+            FROM metadata
+            WHERE key = 'last_collected_at'
+            LIMIT 1
+            """
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
 
+    if row is None:
+        return None
+
+    try:
+        return datetime.strptime(
+            row[0],
+            "%Y-%m-%d %H:%M:%S",
+        )
+    except (TypeError, ValueError):
+        return None
+    
 def get_item_stats(
     connection: sqlite3.Connection,
     item_name: str,
 ) -> dict | None:
+    last_collected_at = get_last_collected_at(
+        connection
+    )
+
     recent_rows = get_recent_rows(
         connection,
         item_name,
     )
 
     if recent_rows:
-        return build_recent_stats(
+        stats = build_recent_stats(
             item_name,
             recent_rows,
         )
+
+        stats["last_collected_at"] = (
+            last_collected_at
+        )
+
+        return stats
 
     latest_row = get_latest_trade_row(
         connection,
@@ -262,10 +297,16 @@ def get_item_stats(
     if latest_row is None:
         return None
 
-    return build_last_trade_stats(
+    stats = build_last_trade_stats(
         item_name,
         latest_row,
     )
+
+    stats["last_collected_at"] = (
+        last_collected_at
+    )
+
+    return stats
 
 
 def format_days_ago(trade_date: datetime) -> str:
