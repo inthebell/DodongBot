@@ -78,21 +78,25 @@ def save_tax_data(data: dict) -> None:
         )
 
 
-def get_week_dates():
+def get_week_dates(week_offset: int = 0):
     now = datetime.now(KST)
-    monday = now.date() - timedelta(days=now.weekday())
+    monday = (
+        now.date()
+        - timedelta(days=now.weekday())
+        + timedelta(weeks=week_offset)
+    )
     sunday = monday + timedelta(days=6)
 
     return monday, sunday
 
 
-def get_week_key() -> str:
-    monday, sunday = get_week_dates()
+def get_week_key(week_offset: int = 0) -> str:
+    monday, sunday = get_week_dates(week_offset)
     return f"{monday.isoformat()}_{sunday.isoformat()}"
 
 
-def get_week_text() -> str:
-    monday, sunday = get_week_dates()
+def get_week_text(week_offset: int = 0) -> str:
+    monday, sunday = get_week_dates(week_offset)
 
     return (
         f"{monday.strftime('%Y-%m-%d')} ~ "
@@ -392,15 +396,25 @@ class Tax(
 
     @app_commands.command(
         name="납부",
-        description="마을원의 이번 주 세금 납부를 기록합니다.",
+        description="마을원의 세금 납부를 1~4주까지 기록합니다.",
     )
     @app_commands.describe(
         대상="세금을 납부한 마을원",
+        주수="납부할 주수 (선택하지 않으면 1주)",
+    )
+    @app_commands.choices(
+        주수=[
+            app_commands.Choice(name="1주", value=1),
+            app_commands.Choice(name="2주", value=2),
+            app_commands.Choice(name="3주", value=3),
+            app_commands.Choice(name="4주", value=4),
+        ]
     )
     async def tax_payment(
         self,
         interaction: discord.Interaction,
         대상: discord.Member,
+        주수: int = 1,
     ):
         if not await self.check_admin(interaction):
             return
@@ -421,44 +435,70 @@ class Tax(
             )
             return
 
-        week_key = get_week_key()
+        if 주수 not in (1, 2, 3, 4):
+            await interaction.response.send_message(
+                "❌ 주수는 1주부터 4주까지만 선택할 수 있습니다.",
+                ephemeral=True,
+            )
+            return
 
-        if week_key not in data["payments"]:
-            data["payments"][week_key] = {}
+        duplicate_weeks = []
 
-        existing_payment = data["payments"][week_key].get(
-            member_id
-        )
+        for week_offset in range(주수):
+            week_key = get_week_key(week_offset)
+            week_payments = data["payments"].get(week_key, {})
 
-        if existing_payment is not None:
-            existing_amount = existing_payment.get(
-                "amount",
-                member_data["tax_amount"],
+            if member_id in week_payments:
+                duplicate_weeks.append(get_week_text(week_offset))
+
+        if duplicate_weeks:
+            duplicate_text = "\n".join(
+                f"• {week_text}" for week_text in duplicate_weeks
             )
 
             await interaction.response.send_message(
                 (
-                    f"⚠️ {대상.mention}님은 이번 주 세금이 "
-                    "이미 기록되어 있습니다.\n"
-                    f"납부 금액: **{existing_amount:,}냥**\n\n"
-                    "잘못 기록했다면 `/세금 취소`를 사용해 주세요."
+                    f"⚠️ {대상.mention}님의 납부 기록이 이미 있는 주가 있습니다.\n\n"
+                    f"{duplicate_text}\n\n"
+                    "중복 기록을 막기 위해 이번 납부는 저장하지 않았습니다."
                 ),
                 ephemeral=True,
             )
             return
 
-        amount = member_data["tax_amount"]
+        weekly_amount = member_data["tax_amount"]
+        paid_at = datetime.now(KST).isoformat()
 
-        data["payments"][week_key][member_id] = {
-            "amount": amount,
-            "paid_at": datetime.now(KST).isoformat(),
-            "recorded_by": interaction.user.id,
-        }
+        for week_offset in range(주수):
+            week_key = get_week_key(week_offset)
+
+            if week_key not in data["payments"]:
+                data["payments"][week_key] = {}
+
+            data["payments"][week_key][member_id] = {
+                "amount": weekly_amount,
+                "paid_at": paid_at,
+                "recorded_by": interaction.user.id,
+                "prepaid_weeks": 주수,
+                "week_offset": week_offset,
+            }
 
         save_tax_data(data)
 
+        total_amount = weekly_amount * 주수
+        start_monday, _ = get_week_dates(0)
+        _, end_sunday = get_week_dates(주수 - 1)
+        payment_period = (
+            f"{start_monday.strftime('%Y-%m-%d')} ~ "
+            f"{end_sunday.strftime('%Y-%m-%d')}"
+        )
+
         embed = discord.Embed(
-            title="✅ 세금 납부 완료",
+            title=(
+                "✅ 세금 납부 완료"
+                if 주수 == 1
+                else "✅ 세금 선납 완료"
+            ),
             color=discord.Color.green(),
             timestamp=datetime.now(KST),
         )
@@ -482,13 +522,35 @@ class Tax(
         )
 
         embed.add_field(
-            name="💰 금액",
-            value=f"{amount:,}냥",
+            name="📅 납부 주수",
+            value=f"{주수}주",
             inline=True,
         )
 
+        embed.add_field(
+            name="💰 주간 세금",
+            value=f"{weekly_amount:,}냥",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="💰 총 납부 금액",
+            value=f"{total_amount:,}냥",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="🗓️ 적용 기간",
+            value=payment_period,
+            inline=False,
+        )
+
         embed.set_footer(
-            text="이번 주 세금 납부가 기록되었습니다."
+            text=(
+                "이번 주 세금 납부가 기록되었습니다."
+                if 주수 == 1
+                else f"이번 주부터 {주수}주간 납부 완료로 기록되었습니다."
+            )
         )
 
         await interaction.response.send_message(embed=embed)
@@ -834,76 +896,6 @@ class Tax(
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(
-        name="테스트공지",
-        description="자정에 전송될 세금 자동 공지를 즉시 테스트합니다.",
-    )
-    async def tax_test_notice(
-        self,
-        interaction: discord.Interaction,
-    ):
-        if not await self.check_admin(interaction):
-            return
-
-        data = load_tax_data()
-        channel_id = data["config"].get("channel_id")
-
-        if not channel_id:
-            await interaction.response.send_message(
-                "❌ 자동 공지 채널이 설정되어 있지 않습니다.\n"
-                "먼저 `/세금 채널`을 사용해 주세요.",
-                ephemeral=True,
-            )
-            return
-
-        guild = self.bot.get_guild(DODONG_GUILD_ID)
-
-        if guild is None:
-            await interaction.response.send_message(
-                "❌ 도동마을 서버 정보를 찾지 못했습니다.",
-                ephemeral=True,
-            )
-            return
-
-        channel = guild.get_channel(channel_id)
-
-        if not isinstance(channel, discord.TextChannel):
-            await interaction.response.send_message(
-                "❌ 설정된 자동 공지 채널을 찾지 못했습니다.",
-                ephemeral=True,
-            )
-            return
-
-        if not data["members"]:
-            await interaction.response.send_message(
-                "❌ 등록된 마을원이 없습니다.",
-                ephemeral=True,
-            )
-            return
-
-        embed = create_tax_status_embed(data)
-
-        try:
-            await channel.send(
-                content=(
-                    "📢 아직 이번 주 세금을 납부하지 않은 "
-                    "마을원은 기간 내 납부 부탁드립니다!"
-                ),
-                embed=embed,
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
-
-            await interaction.response.send_message(
-                f"✅ {channel.mention} 채널에 테스트 공지를 전송했습니다.",
-                ephemeral=True,
-            )
-
-        except discord.HTTPException as error:
-            await interaction.response.send_message(
-                f"❌ 테스트 공지 전송에 실패했습니다.\n`{error}`",
-                ephemeral=True,
-            )
-            
     @tasks.loop(time=MIDNIGHT_KST)
     async def daily_tax_notice(self):
         data = load_tax_data()
