@@ -396,7 +396,7 @@ class Tax(
 
     @app_commands.command(
         name="납부",
-        description="마을원의 세금 납부를 1~4주까지 기록합니다.",
+        description="마을원의 세금 납부를 기록합니다.",
     )
     @app_commands.describe(
         대상="세금을 납부한 마을원",
@@ -414,7 +414,7 @@ class Tax(
         self,
         interaction: discord.Interaction,
         대상: discord.Member,
-        주수: int = 1,
+        주수: app_commands.Choice[int] | None = None,
     ):
         if not await self.check_admin(interaction):
             return
@@ -435,32 +435,31 @@ class Tax(
             )
             return
 
-        if 주수 not in (1, 2, 3, 4):
-            await interaction.response.send_message(
-                "❌ 주수는 1주부터 4주까지만 선택할 수 있습니다.",
-                ephemeral=True,
-            )
-            return
+        selected_weeks = 주수.value if 주수 else 1
 
         duplicate_weeks = []
 
-        for week_offset in range(주수):
+        for week_offset in range(selected_weeks):
             week_key = get_week_key(week_offset)
             week_payments = data["payments"].get(week_key, {})
 
             if member_id in week_payments:
-                duplicate_weeks.append(get_week_text(week_offset))
+                duplicate_weeks.append(
+                    get_week_text(week_offset)
+                )
 
         if duplicate_weeks:
             duplicate_text = "\n".join(
-                f"• {week_text}" for week_text in duplicate_weeks
+                f"• {week_text}"
+                for week_text in duplicate_weeks
             )
 
             await interaction.response.send_message(
                 (
-                    f"⚠️ {대상.mention}님의 납부 기록이 이미 있는 주가 있습니다.\n\n"
+                    f"⚠️ {대상.mention}님의 납부 기록이 "
+                    "이미 있는 주가 있습니다.\n\n"
                     f"{duplicate_text}\n\n"
-                    "중복 기록을 막기 위해 이번 납부는 저장하지 않았습니다."
+                    "중복 기록을 막기 위해 저장하지 않았습니다."
                 ),
                 ephemeral=True,
             )
@@ -469,7 +468,7 @@ class Tax(
         weekly_amount = member_data["tax_amount"]
         paid_at = datetime.now(KST).isoformat()
 
-        for week_offset in range(주수):
+        for week_offset in range(selected_weeks):
             week_key = get_week_key(week_offset)
 
             if week_key not in data["payments"]:
@@ -479,26 +478,16 @@ class Tax(
                 "amount": weekly_amount,
                 "paid_at": paid_at,
                 "recorded_by": interaction.user.id,
-                "prepaid_weeks": 주수,
+                "prepaid_weeks": selected_weeks,
                 "week_offset": week_offset,
             }
 
         save_tax_data(data)
 
-        total_amount = weekly_amount * 주수
-        start_monday, _ = get_week_dates(0)
-        _, end_sunday = get_week_dates(주수 - 1)
-        payment_period = (
-            f"{start_monday.strftime('%Y-%m-%d')} ~ "
-            f"{end_sunday.strftime('%Y-%m-%d')}"
-        )
+        total_amount = weekly_amount * selected_weeks
 
         embed = discord.Embed(
-            title=(
-                "✅ 세금 납부 완료"
-                if 주수 == 1
-                else "✅ 세금 선납 완료"
-            ),
+            title="✅ 세금 납부 완료",
             color=discord.Color.green(),
             timestamp=datetime.now(KST),
         )
@@ -522,38 +511,31 @@ class Tax(
         )
 
         embed.add_field(
-            name="📅 납부 주수",
-            value=f"{주수}주",
-            inline=True,
-        )
-
-        embed.add_field(
-            name="💰 주간 세금",
-            value=f"{weekly_amount:,}냥",
-            inline=True,
-        )
-
-        embed.add_field(
-            name="💰 총 납부 금액",
+            name="💰 금액",
             value=f"{total_amount:,}냥",
             inline=True,
         )
 
         embed.add_field(
-            name="🗓️ 적용 기간",
-            value=payment_period,
-            inline=False,
+            name="📅 납부 주수",
+            value=f"{selected_weeks}주",
+            inline=True,
         )
 
         embed.set_footer(
             text=(
                 "이번 주 세금 납부가 기록되었습니다."
-                if 주수 == 1
-                else f"이번 주부터 {주수}주간 납부 완료로 기록되었습니다."
+                if selected_weeks == 1
+                else (
+                    f"이번 주부터 {selected_weeks}주간 "
+                    "세금 납부가 기록되었습니다."
+                )
             )
         )
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(
+            embed=embed,
+        )
 
     @app_commands.command(
         name="조회",
