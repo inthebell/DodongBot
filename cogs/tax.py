@@ -10,7 +10,7 @@ from discord.ext import commands, tasks
 DODONG_GUILD_ID = 1517850860322029618
 
 KST = timezone(timedelta(hours=9))
-MIDNIGHT_KST = time(hour=0, minute=0, tzinfo=KST)
+MIDNIGHT_KST = time(hour=19, minute=10, tzinfo=KST)
 
 DATA_FILE = Path("data/tax_data.json")
 
