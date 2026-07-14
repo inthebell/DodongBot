@@ -10,7 +10,7 @@ from discord.ext import commands, tasks
 DODONG_GUILD_ID = 1517850860322029618
 
 KST = timezone(timedelta(hours=9))
-MIDNIGHT_KST = time(hour=19, minute=10, tzinfo=KST)
+MIDNIGHT_KST = time(hour=0, minute=0, tzinfo=KST)
 
 DATA_FILE = Path("data/tax_data.json")
 
@@ -834,6 +834,76 @@ class Tax(
 
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(
+        name="테스트공지",
+        description="자정에 전송될 세금 자동 공지를 즉시 테스트합니다.",
+    )
+    async def tax_test_notice(
+        self,
+        interaction: discord.Interaction,
+    ):
+        if not await self.check_admin(interaction):
+            return
+
+        data = load_tax_data()
+        channel_id = data["config"].get("channel_id")
+
+        if not channel_id:
+            await interaction.response.send_message(
+                "❌ 자동 공지 채널이 설정되어 있지 않습니다.\n"
+                "먼저 `/세금 채널`을 사용해 주세요.",
+                ephemeral=True,
+            )
+            return
+
+        guild = self.bot.get_guild(DODONG_GUILD_ID)
+
+        if guild is None:
+            await interaction.response.send_message(
+                "❌ 도동마을 서버 정보를 찾지 못했습니다.",
+                ephemeral=True,
+            )
+            return
+
+        channel = guild.get_channel(channel_id)
+
+        if not isinstance(channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "❌ 설정된 자동 공지 채널을 찾지 못했습니다.",
+                ephemeral=True,
+            )
+            return
+
+        if not data["members"]:
+            await interaction.response.send_message(
+                "❌ 등록된 마을원이 없습니다.",
+                ephemeral=True,
+            )
+            return
+
+        embed = create_tax_status_embed(data)
+
+        try:
+            await channel.send(
+                content=(
+                    "📢 아직 이번 주 세금을 납부하지 않은 "
+                    "마을원은 기간 내 납부 부탁드립니다!"
+                ),
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+
+            await interaction.response.send_message(
+                f"✅ {channel.mention} 채널에 테스트 공지를 전송했습니다.",
+                ephemeral=True,
+            )
+
+        except discord.HTTPException as error:
+            await interaction.response.send_message(
+                f"❌ 테스트 공지 전송에 실패했습니다.\n`{error}`",
+                ephemeral=True,
+            )
+            
     @tasks.loop(time=MIDNIGHT_KST)
     async def daily_tax_notice(self):
         data = load_tax_data()
