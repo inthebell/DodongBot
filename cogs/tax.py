@@ -1,15 +1,16 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 
 DODONG_GUILD_ID = 1517850860322029618
 
 KST = timezone(timedelta(hours=9))
+MIDNIGHT_KST = time(hour=0, minute=0, tzinfo=KST)
 
 DATA_FILE = Path("data/tax_data.json")
 
@@ -25,6 +26,10 @@ def create_default_data() -> dict:
     return {
         "members": {},
         "payments": {},
+        "config": {
+            "channel_id": None,
+            "last_auto_notice_date": None,
+        },
     }
 
 
@@ -45,6 +50,15 @@ def load_tax_data() -> dict:
 
         if "payments" not in data:
             data["payments"] = {}
+
+        if "config" not in data:
+            data["config"] = {}
+
+        if "channel_id" not in data["config"]:
+            data["config"]["channel_id"] = None
+
+        if "last_auto_notice_date" not in data["config"]:
+            data["config"]["last_auto_notice_date"] = None
 
         return data
 
@@ -74,7 +88,6 @@ def get_week_dates():
 
 def get_week_key() -> str:
     monday, sunday = get_week_dates()
-
     return f"{monday.isoformat()}_{sunday.isoformat()}"
 
 
@@ -87,6 +100,139 @@ def get_week_text() -> str:
     )
 
 
+def get_sorted_members(members: dict):
+    return sorted(
+        members.items(),
+        key=lambda item: (
+            -item[1].get("tier", 0),
+            item[1].get("game_name", "").lower(),
+        ),
+    )
+
+
+def group_members_by_tier(
+    members: dict,
+    payments: dict,
+    paid: bool,
+) -> tuple[str, int]:
+    groups = {
+        4: [],
+        3: [],
+        2: [],
+        1: [],
+    }
+
+    count = 0
+
+    for member_id, member_data in get_sorted_members(members):
+        is_paid = member_id in payments
+
+        if is_paid != paid:
+            continue
+
+        tier = member_data.get("tier", 0)
+        game_name = member_data.get("game_name", "알 수 없음")
+        amount = member_data.get(
+            "tax_amount",
+            TAX_AMOUNTS.get(tier, 0),
+        )
+
+        if paid:
+            paid_amount = payments[member_id].get(
+                "amount",
+                amount,
+            )
+
+            line = (
+                f"<@{member_id}> · `{game_name}` · "
+                f"{paid_amount:,}냥"
+            )
+        else:
+            line = (
+                f"<@{member_id}> · `{game_name}` · "
+                f"{amount:,}냥"
+            )
+
+        if tier in groups:
+            groups[tier].append(line)
+
+        count += 1
+
+    sections = []
+
+    for tier in (4, 3, 2, 1):
+        if not groups[tier]:
+            continue
+
+        icon = "🔴" if not paid else "🟢"
+        lines = "\n".join(
+            f"└ {line}" for line in groups[tier]
+        )
+
+        sections.append(
+            f"{icon} **{tier}차**\n{lines}"
+        )
+
+    if not sections:
+        if paid:
+            return "아직 납부한 마을원이 없습니다.", 0
+
+        return "모든 마을원이 납부했습니다.", 0
+
+    return "\n\n".join(sections), count
+
+
+def create_tax_status_embed(data: dict) -> discord.Embed:
+    members = data["members"]
+    week_key = get_week_key()
+    payments = data["payments"].get(week_key, {})
+
+    unpaid_text, unpaid_count = group_members_by_tier(
+        members,
+        payments,
+        paid=False,
+    )
+
+    paid_text, paid_count = group_members_by_tier(
+        members,
+        payments,
+        paid=True,
+    )
+
+    embed = discord.Embed(
+        title="📋 도동마을 주간 세금 현황",
+        description=(
+            f"납부 기간: **{get_week_text()}**\n"
+            f"전체 마을원: **{len(members)}명**"
+        ),
+        color=discord.Color.blue(),
+        timestamp=datetime.now(KST),
+    )
+
+    embed.add_field(
+        name=f"❌ 미납 ({unpaid_count}명)",
+        value=unpaid_text,
+        inline=False,
+    )
+
+    embed.add_field(
+        name=f"✅ 납부 완료 ({paid_count}명)",
+        value=paid_text,
+        inline=False,
+    )
+
+    if unpaid_count == 0:
+        embed.set_footer(
+            text="🎉 이번 주 세금 납부가 모두 완료되었습니다!"
+        )
+    else:
+        embed.set_footer(
+            text="아직 납부하지 않은 마을원은 기간 내 납부 부탁드립니다."
+        )
+
+    return embed
+
+
 @app_commands.guilds(discord.Object(id=DODONG_GUILD_ID))
 class Tax(
     commands.GroupCog,
@@ -96,6 +242,10 @@ class Tax(
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         super().__init__()
+        self.daily_tax_notice.start()
+
+    def cog_unload(self):
+        self.daily_tax_notice.cancel()
 
     async def check_admin(
         self,
@@ -184,7 +334,6 @@ class Tax(
         member_id = str(대상.id)
         tier = 차수.value
         amount = TAX_AMOUNTS[tier]
-
         already_registered = member_id in data["members"]
 
         data["members"][member_id] = {
@@ -236,12 +385,10 @@ class Tax(
         )
 
         embed.set_footer(
-            text="마을원 세금 정보가 저장되었습니다."
+            text="✅ 마을원 정보가 저장되었습니다."
         )
 
-        await interaction.response.send_message(
-            embed=embed,
-        )
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(
         name="납부",
@@ -311,7 +458,7 @@ class Tax(
         save_tax_data(data)
 
         embed = discord.Embed(
-            title="📥 세금 납부 확인",
+            title="✅ 세금 납부 완료",
             color=discord.Color.green(),
             timestamp=datetime.now(KST),
         )
@@ -341,12 +488,10 @@ class Tax(
         )
 
         embed.set_footer(
-            text="✅ 이번 주 세금 납부가 기록되었습니다."
+            text="이번 주 세금 납부가 기록되었습니다."
         )
 
-        await interaction.response.send_message(
-            embed=embed,
-        )
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(
         name="조회",
@@ -360,111 +505,17 @@ class Tax(
             return
 
         data = load_tax_data()
-        members = data["members"]
 
-        if not members:
+        if not data["members"]:
             await interaction.response.send_message(
                 "❌ 등록된 마을원이 없습니다.",
                 ephemeral=True,
             )
             return
 
-        week_key = get_week_key()
-        payments = data["payments"].get(week_key, {})
+        embed = create_tax_status_embed(data)
 
-        paid_lines = []
-        unpaid_lines = []
-
-        sorted_members = sorted(
-            members.items(),
-            key=lambda item: (
-                item[1].get("tier", 0),
-                item[1].get("game_name", "").lower(),
-            ),
-            reverse=True,
-        )
-
-        for member_id, member_data in sorted_members:
-            mention = f"<@{member_id}>"
-            game_name = member_data.get(
-                "game_name",
-                "알 수 없음",
-            )
-            tier = member_data.get("tier", 0)
-
-            if member_id in payments:
-                amount = payments[member_id].get(
-                    "amount",
-                    member_data.get("tax_amount", 0),
-                )
-
-                paid_lines.append(
-                    (
-                        f"✅ {mention}\n"
-                        f"└ `{game_name}` · {tier}차 · "
-                        f"{amount:,}냥"
-                    )
-                )
-            else:
-                amount = member_data.get(
-                    "tax_amount",
-                    TAX_AMOUNTS.get(tier, 0),
-                )
-
-                unpaid_lines.append(
-                    (
-                        f"❌ {mention}\n"
-                        f"└ `{game_name}` · {tier}차 · "
-                        f"{amount:,}냥"
-                    )
-                )
-
-        paid_text = (
-            "\n".join(paid_lines)
-            if paid_lines
-            else "아직 납부한 마을원이 없습니다."
-        )
-
-        unpaid_text = (
-            "\n".join(unpaid_lines)
-            if unpaid_lines
-            else "모든 마을원이 납부했습니다."
-        )
-
-        embed = discord.Embed(
-            title="📋 도동마을 주간 세금 현황",
-            description=(
-                f"납부 기간: **{get_week_text()}**\n"
-                f"전체 마을원: **{len(members)}명**"
-            ),
-            color=discord.Color.blue(),
-            timestamp=datetime.now(KST),
-        )
-
-        embed.add_field(
-            name=f"✅ 납부 완료 ({len(paid_lines)}명)",
-            value=paid_text,
-            inline=False,
-        )
-
-        embed.add_field(
-            name=f"❌ 미납 ({len(unpaid_lines)}명)",
-            value=unpaid_text,
-            inline=False,
-        )
-
-        if not unpaid_lines:
-            embed.set_footer(
-                text="🎉 이번 주 세금 납부가 모두 완료되었습니다!"
-            )
-        else:
-            embed.set_footer(
-                text="아직 납부하지 않은 마을원은 기간 내 납부 부탁드립니다."
-            )
-
-        await interaction.response.send_message(
-            embed=embed,
-        )
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(
         name="취소",
@@ -498,7 +549,6 @@ class Tax(
             return
 
         del payments[member_id]
-
         save_tax_data(data)
 
         embed = discord.Embed(
@@ -515,9 +565,326 @@ class Tax(
             text="해당 마을원은 다시 미납 상태로 표시됩니다."
         )
 
-        await interaction.response.send_message(
-            embed=embed,
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(
+        name="명단",
+        description="세금 명단에 등록된 전체 마을원을 확인합니다.",
+    )
+    async def tax_member_list(
+        self,
+        interaction: discord.Interaction,
+    ):
+        if not await self.check_admin(interaction):
+            return
+
+        data = load_tax_data()
+        members = data["members"]
+
+        if not members:
+            await interaction.response.send_message(
+                "❌ 등록된 마을원이 없습니다.",
+                ephemeral=True,
+            )
+            return
+
+        groups = {
+            4: [],
+            3: [],
+            2: [],
+            1: [],
+        }
+
+        for member_id, member_data in get_sorted_members(members):
+            tier = member_data.get("tier", 0)
+            game_name = member_data.get(
+                "game_name",
+                "알 수 없음",
+            )
+            amount = member_data.get(
+                "tax_amount",
+                TAX_AMOUNTS.get(tier, 0),
+            )
+
+            if tier in groups:
+                groups[tier].append(
+                    (
+                        f"<@{member_id}> · `{game_name}` · "
+                        f"{amount:,}냥"
+                    )
+                )
+
+        embed = discord.Embed(
+            title="🏡 도동마을 세금 명단",
+            description=f"전체 마을원: **{len(members)}명**",
+            color=discord.Color.blurple(),
+            timestamp=datetime.now(KST),
         )
+
+        for tier in (4, 3, 2, 1):
+            lines = groups[tier]
+
+            if not lines:
+                value = "등록된 마을원이 없습니다."
+            else:
+                value = "\n".join(
+                    f"• {line}" for line in lines
+                )
+
+            embed.add_field(
+                name=(
+                    f"{tier}차 · "
+                    f"{TAX_AMOUNTS[tier]:,}냥 "
+                    f"({len(lines)}명)"
+                ),
+                value=value,
+                inline=False,
+            )
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(
+        name="수정",
+        description="등록된 마을원의 게임 닉네임 또는 차수를 수정합니다.",
+    )
+    @app_commands.describe(
+        대상="정보를 수정할 마을원",
+        게임닉="새 게임 닉네임",
+        차수="새 차수",
+    )
+    @app_commands.choices(
+        차수=[
+            app_commands.Choice(
+                name="1차 - 20,000냥",
+                value=1,
+            ),
+            app_commands.Choice(
+                name="2차 - 50,000냥",
+                value=2,
+            ),
+            app_commands.Choice(
+                name="3차 - 70,000냥",
+                value=3,
+            ),
+            app_commands.Choice(
+                name="4차 - 100,000냥",
+                value=4,
+            ),
+        ]
+    )
+    async def tax_edit(
+        self,
+        interaction: discord.Interaction,
+        대상: discord.Member,
+        게임닉: str,
+        차수: app_commands.Choice[int],
+    ):
+        if not await self.check_admin(interaction):
+            return
+
+        data = load_tax_data()
+        member_id = str(대상.id)
+
+        if member_id not in data["members"]:
+            await interaction.response.send_message(
+                (
+                    f"❌ {대상.mention}님은 등록된 "
+                    "마을원이 아닙니다."
+                ),
+                ephemeral=True,
+            )
+            return
+
+        old_data = data["members"][member_id]
+        old_game_name = old_data.get("game_name", "알 수 없음")
+        old_tier = old_data.get("tier", 0)
+
+        new_game_name = 게임닉.strip()
+        new_tier = 차수.value
+        new_amount = TAX_AMOUNTS[new_tier]
+
+        data["members"][member_id].update(
+            {
+                "discord_name": str(대상),
+                "display_name": 대상.display_name,
+                "game_name": new_game_name,
+                "tier": new_tier,
+                "tax_amount": new_amount,
+                "updated_at": datetime.now(KST).isoformat(),
+                "updated_by": interaction.user.id,
+            }
+        )
+
+        save_tax_data(data)
+
+        embed = discord.Embed(
+            title="✏️ 마을원 정보 수정 완료",
+            color=discord.Color.gold(),
+            timestamp=datetime.now(KST),
+        )
+
+        embed.add_field(
+            name="👤 대상",
+            value=대상.mention,
+            inline=False,
+        )
+
+        embed.add_field(
+            name="🎮 게임 닉네임",
+            value=f"`{old_game_name}` → `{new_game_name}`",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="🏷️ 차수",
+            value=f"{old_tier}차 → {new_tier}차",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="💰 주간 세금",
+            value=f"{new_amount:,}냥",
+            inline=True,
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(
+        name="삭제",
+        description="마을원을 세금 명단에서 삭제합니다.",
+    )
+    @app_commands.describe(
+        대상="세금 명단에서 삭제할 마을원",
+    )
+    async def tax_delete(
+        self,
+        interaction: discord.Interaction,
+        대상: discord.Member,
+    ):
+        if not await self.check_admin(interaction):
+            return
+
+        data = load_tax_data()
+        member_id = str(대상.id)
+
+        member_data = data["members"].get(member_id)
+
+        if member_data is None:
+            await interaction.response.send_message(
+                (
+                    f"❌ {대상.mention}님은 등록된 "
+                    "마을원이 아닙니다."
+                ),
+                ephemeral=True,
+            )
+            return
+
+        game_name = member_data.get(
+            "game_name",
+            "알 수 없음",
+        )
+
+        del data["members"][member_id]
+
+        for week_payments in data["payments"].values():
+            week_payments.pop(member_id, None)
+
+        save_tax_data(data)
+
+        embed = discord.Embed(
+            title="🗑️ 마을원 삭제 완료",
+            description=(
+                f"{대상.mention} · `{game_name}`님을\n"
+                "세금 명단에서 삭제했습니다."
+            ),
+            color=discord.Color.red(),
+            timestamp=datetime.now(KST),
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(
+        name="채널",
+        description="매일 00시 세금 현황이 올라올 채널을 설정합니다.",
+    )
+    @app_commands.describe(
+        채널="자동 세금 현황을 전송할 채널",
+    )
+    async def tax_channel(
+        self,
+        interaction: discord.Interaction,
+        채널: discord.TextChannel,
+    ):
+        if not await self.check_admin(interaction):
+            return
+
+        data = load_tax_data()
+        data["config"]["channel_id"] = 채널.id
+        save_tax_data(data)
+
+        embed = discord.Embed(
+            title="⚙️ 세금 자동 공지 채널 설정",
+            description=(
+                f"매일 한국 시간 **00:00**에\n"
+                f"{채널.mention} 채널로 세금 현황을 전송합니다."
+            ),
+            color=discord.Color.green(),
+            timestamp=datetime.now(KST),
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+    @tasks.loop(time=MIDNIGHT_KST)
+    async def daily_tax_notice(self):
+        data = load_tax_data()
+
+        channel_id = data["config"].get("channel_id")
+
+        if not channel_id:
+            return
+
+        today_text = datetime.now(KST).date().isoformat()
+        last_notice_date = data["config"].get(
+            "last_auto_notice_date"
+        )
+
+        if last_notice_date == today_text:
+            return
+
+        guild = self.bot.get_guild(DODONG_GUILD_ID)
+
+        if guild is None:
+            return
+
+        channel = guild.get_channel(channel_id)
+
+        if not isinstance(channel, discord.TextChannel):
+            return
+
+        if not data["members"]:
+            return
+
+        embed = create_tax_status_embed(data)
+
+        try:
+            await channel.send(
+                content=(
+                    "📢 아직 이번 주 세금을 납부하지 않은 "
+                    "마을원은 기간 내 납부 부탁드립니다!"
+                ),
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+
+            data["config"]["last_auto_notice_date"] = today_text
+            save_tax_data(data)
+
+        except discord.HTTPException as error:
+            print(f"세금 자동 공지 전송 오류: {error}")
+
+    @daily_tax_notice.before_loop
+    async def before_daily_tax_notice(self):
+        await self.bot.wait_until_ready()
 
 
 async def setup(bot: commands.Bot):
