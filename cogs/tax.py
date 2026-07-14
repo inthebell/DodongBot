@@ -142,14 +142,31 @@ def group_members_by_tier(
         )
 
         if paid:
-            paid_amount = payments[member_id].get(
+            payment_info = payments[member_id]
+
+            paid_amount = payment_info.get(
                 "amount",
                 amount,
             )
 
+            prepaid_weeks = payment_info.get(
+                "prepaid_weeks",
+                1,
+            )
+
+            week_offset = payment_info.get(
+                "week_offset",
+                0,
+            )
+
+            if prepaid_weeks >= 2:
+                week_text = f" · {week_offset + 1}/{prepaid_weeks}주"
+            else:
+                week_text = ""
+
             line = (
                 f"<@{member_id}> · `{game_name}` · "
-                f"{paid_amount:,}냥"
+                f"{paid_amount:,}냥{week_text}"
             )
         else:
             line = (
@@ -511,8 +528,8 @@ class Tax(
         )
 
         embed.add_field(
-            name="💰 금액",
-            value=f"{total_amount:,}냥",
+            name="💰 주간 세금",
+            value=f"{weekly_amount:,}냥",
             inline=True,
         )
 
@@ -521,6 +538,13 @@ class Tax(
             value=f"{selected_weeks}주",
             inline=True,
         )
+
+        if selected_weeks >= 2:
+            embed.add_field(
+                name="💵 총 납부 금액",
+                value=f"{total_amount:,}냥",
+                inline=True,
+            )
 
         embed.set_footer(
             text=(
@@ -563,15 +587,25 @@ class Tax(
 
     @app_commands.command(
         name="취소",
-        description="마을원의 이번 주 세금 납부 기록을 취소합니다.",
+        description="마을원의 세금 납부 기록을 취소합니다.",
     )
     @app_commands.describe(
         대상="납부 기록을 취소할 마을원",
+        주수="취소할 주수 (선택하지 않으면 1주)",
+    )
+    @app_commands.choices(
+        주수=[
+            app_commands.Choice(name="1주", value=1),
+            app_commands.Choice(name="2주", value=2),
+            app_commands.Choice(name="3주", value=3),
+            app_commands.Choice(name="4주", value=4),
+        ]
     )
     async def tax_cancel(
         self,
         interaction: discord.Interaction,
         대상: discord.Member,
+        주수: app_commands.Choice[int] | None = None,
     ):
         if not await self.check_admin(interaction):
             return
@@ -579,37 +613,79 @@ class Tax(
         data = load_tax_data()
 
         member_id = str(대상.id)
-        week_key = get_week_key()
-        payments = data["payments"].get(week_key, {})
+        selected_weeks = 주수.value if 주수 else 1
 
-        if member_id not in payments:
+        cancelled_weeks = []
+        missing_weeks = []
+
+        for week_offset in range(selected_weeks):
+            week_key = get_week_key(week_offset)
+            week_text = get_week_text(week_offset)
+            payments = data["payments"].get(week_key, {})
+
+            if member_id in payments:
+                del payments[member_id]
+                cancelled_weeks.append(week_text)
+            else:
+                missing_weeks.append(week_text)
+
+        if not cancelled_weeks:
             await interaction.response.send_message(
                 (
-                    f"❌ {대상.mention}님의 이번 주 "
+                    f"❌ {대상.mention}님의 선택한 기간에 "
                     "세금 납부 기록이 없습니다."
                 ),
                 ephemeral=True,
             )
             return
 
-        del payments[member_id]
         save_tax_data(data)
+
+        cancelled_text = "\n".join(
+            f"• {week_text}"
+            for week_text in cancelled_weeks
+        )
 
         embed = discord.Embed(
             title="↩️ 세금 납부 기록 취소",
             description=(
-                f"{대상.mention}님의 이번 주 세금 납부 기록을 "
-                "취소했습니다."
+                f"{대상.mention}님의 세금 납부 기록을 취소했습니다."
             ),
             color=discord.Color.orange(),
             timestamp=datetime.now(KST),
         )
 
-        embed.set_footer(
-            text="해당 마을원은 다시 미납 상태로 표시됩니다."
+        embed.add_field(
+            name="📅 취소된 기간",
+            value=cancelled_text,
+            inline=False,
         )
 
-        await interaction.response.send_message(embed=embed)
+        embed.add_field(
+            name="🗓️ 취소 주수",
+            value=f"{len(cancelled_weeks)}주",
+            inline=True,
+        )
+
+        if missing_weeks:
+            missing_text = "\n".join(
+                f"• {week_text}"
+                for week_text in missing_weeks
+            )
+
+            embed.add_field(
+                name="⚠️ 기록이 없던 기간",
+                value=missing_text,
+                inline=False,
+            )
+
+        embed.set_footer(
+            text="취소된 주차는 다시 미납 상태로 표시됩니다."
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+        )
 
     @app_commands.command(
         name="명단",
