@@ -48,11 +48,50 @@ FOOD_TIERS = {
 
 
 PRICE_RANGE = {
-    1: (48, 62),
-    2: (69, 90),
-    3: (120, 156),
-    4: (191, 248),
-    5: (209, 272),
+    1: {
+        "무별": (48, 62),
+        "은별": (62, 72),
+        "금별": (72, 82),
+    },
+    2: {
+        "무별": (69, 90),
+        "은별": (90, 104),
+        "금별": (104, 117),
+    },
+    3: {
+        "무별": (120, 156),
+        "은별": (156, 180),
+        "금별": (180, 204),
+    },
+    4: {
+        "무별": (191, 248),
+        "은별": (248, 287),
+        "금별": (287, 325),
+    },
+}
+
+
+TIER_5_PRICE_RANGE = {
+    "크리미 파프리카 비프플레이트": {
+        "무별": (209, 272),
+        "은별": (272, 314),
+        "금별": (314, 355),
+    },
+    "스파이시 포크라이스": {
+        "무별": (209, 272),
+        "은별": (272, 314),
+        "금별": (314, 355),
+    },
+    "시트러스 피치 치킨램": {
+        "무별": (185, 241),
+        "은별": (241, 278),
+        "금별": (278, 315),
+    },
+    "그린 허브 램플": {
+        "무별": (185, 241),
+        "은별": (241, 278),
+        "금별": (278, 315),
+    },
 }
 
 
@@ -90,8 +129,39 @@ def get_status(price: int, low: int, high: int) -> str:
     return "저점"
 
 
-def is_normal_food(raw_name: str) -> bool:
-    return "🩶" not in raw_name and "🌟" not in raw_name
+def get_food_grade(raw_name: str) -> str:
+    if "🩶" in raw_name:
+        return "은별"
+
+    if "🌟" in raw_name:
+        return "금별"
+
+    return "무별"
+
+
+def clean_food_name(raw_name: str) -> str:
+    return raw_name.replace("🩶", "").replace("🌟", "").strip()
+
+
+def get_price_range(
+    name: str,
+    tier: int,
+    grade: str,
+) -> tuple[int, int] | None:
+    if tier == 5:
+        food_ranges = TIER_5_PRICE_RANGE.get(name)
+
+        if food_ranges is None:
+            return None
+
+        return food_ranges.get(grade)
+
+    tier_ranges = PRICE_RANGE.get(tier)
+
+    if tier_ranges is None:
+        return None
+
+    return tier_ranges.get(grade)
 
 
 def contains_valid_cooking_data(text: str) -> bool:
@@ -101,10 +171,7 @@ def contains_valid_cooking_data(text: str) -> bool:
         return False
 
     for raw_name, _, _ in matches:
-        if not is_normal_food(raw_name):
-            continue
-
-        name = raw_name.strip()
+        name = clean_food_name(raw_name)
 
         if name in FOOD_TIERS:
             return True
@@ -115,31 +182,51 @@ def contains_valid_cooking_data(text: str) -> bool:
 def parse_cooking(text: str) -> dict:
     results = {
         "고점": {},
+        "은별고점": {},
+        "금별고점": {},
         "추천": {},
     }
 
     for raw_name, _, current_price in COOKING_PATTERN.findall(text):
-        if not is_normal_food(raw_name):
-            continue
-
-        name = raw_name.strip()
+        grade = get_food_grade(raw_name)
+        name = clean_food_name(raw_name)
         tier = FOOD_TIERS.get(name)
 
         if tier is None:
             continue
 
-        price = int(current_price)
-        low, high = PRICE_RANGE[tier]
-        status = get_status(price, low, high)
+        price_range = get_price_range(name, tier, grade)
 
-        if status == "저점":
+        if price_range is None:
             continue
 
-        results[status].setdefault(
+        low, high = price_range
+        price = int(current_price)
+        status = get_status(price, low, high)
+
+        if grade == "무별":
+            if status == "저점":
+                continue
+
+            results[status].setdefault(
+                (tier, low, high),
+                [],
+            ).append(
+                f"🍳 **{name}** - {price}원"
+            )
+            continue
+
+        if status != "고점":
+            continue
+
+        result_key = "은별고점" if grade == "은별" else "금별고점"
+        output_emoji = "🔘" if grade == "은별" else "🟡"
+
+        results[result_key].setdefault(
             (tier, low, high),
             [],
         ).append(
-            f"🍳 **{name}** - {price}원"
+            f"{output_emoji} **{name}** - {price}원"
         )
 
     return results
@@ -152,21 +239,48 @@ def build_result_text(
 ) -> str:
     parts = ["🍳 **요리 변동상점**"]
 
-    for status, title in [
-        ("고점", "🔥 고점"),
-        ("추천", "⭐ 추천"),
-    ]:
-        if status == "추천":
-            parts.append("\n━━━━━━━━━━━━━━")
+    parts.append("\n🔥 고점")
 
-        parts.append(f"\n{title}")
+    has_high_items = any(
+        results.get(key)
+        for key in ("고점", "은별고점", "금별고점")
+    )
 
-        if not results.get(status):
-            parts.append("없음")
-            continue
+    if not has_high_items:
+        parts.append("없음")
+    else:
+        for (tier, low, high), items in sorted(
+            results["고점"].items()
+        ):
+            parts.append(
+                f"\n【{tier}차】 ({low}~{high}원)"
+            )
+            parts.extend(items)
 
         for (tier, low, high), items in sorted(
-            results[status].items()
+            results["은별고점"].items()
+        ):
+            parts.append(
+                f"\n【{tier}차 (은별)】 ({low}~{high}원)"
+            )
+            parts.extend(items)
+
+        for (tier, low, high), items in sorted(
+            results["금별고점"].items()
+        ):
+            parts.append(
+                f"\n【{tier}차 (금별)】 ({low}~{high}원)"
+            )
+            parts.extend(items)
+
+    parts.append("\n━━━━━━━━━━━━━━")
+    parts.append("\n⭐ 추천")
+
+    if not results.get("추천"):
+        parts.append("없음")
+    else:
+        for (tier, low, high), items in sorted(
+            results["추천"].items()
         ):
             parts.append(
                 f"\n【{tier}차】 ({low}~{high}원)"
