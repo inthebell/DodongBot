@@ -220,7 +220,7 @@ def parse_cooking(text: str) -> dict:
             continue
 
         result_key = "은별고점" if grade == "은별" else "금별고점"
-        output_emoji = "🔘" if grade == "은별" else "🟡"
+        output_emoji = "⚪" if grade == "은별" else "🟡"
 
         results[result_key].setdefault(
             (tier, low, high),
@@ -253,7 +253,7 @@ def build_result_text(
             results["고점"].items()
         ):
             parts.append(
-                f"\n【{tier}차】 ({low}~{high}원)"
+                f"\n【{tier}차 (무별)】 ({low}~{high}원)"
             )
             parts.extend(items)
 
@@ -283,7 +283,7 @@ def build_result_text(
             results["추천"].items()
         ):
             parts.append(
-                f"\n【{tier}차】 ({low}~{high}원)"
+                f"\n【{tier}차 (무별)】 ({low}~{high}원)"
             )
             parts.extend(items)
 
