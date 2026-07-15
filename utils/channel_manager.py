@@ -89,3 +89,30 @@ def remove_channel_id(
 
     save_settings(settings)
     return True
+
+
+def get_setting_enabled(
+    guild_id: int,
+    feature: str,
+    default: bool = False,
+) -> bool:
+    settings = load_settings()
+    guild_settings = settings.get(str(guild_id), {})
+    value = guild_settings.get(feature, default)
+
+    return bool(value)
+
+
+def set_setting_enabled(
+    guild_id: int,
+    feature: str,
+    enabled: bool,
+) -> None:
+    settings = load_settings()
+    guild_key = str(guild_id)
+
+    if guild_key not in settings:
+        settings[guild_key] = {}
+
+    settings[guild_key][feature] = enabled
+    save_settings(settings)

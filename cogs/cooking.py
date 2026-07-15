@@ -5,14 +5,16 @@ from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from utils.log_manager import send_use_log
 
 from utils.channel_manager import (
     get_channel_id,
+    get_setting_enabled,
     remove_channel_id,
     set_channel_id,
+    set_setting_enabled,
 )
 
 
@@ -56,6 +58,22 @@ PRICE_RANGE = {
 
 COOKING_PATTERN = re.compile(
     r"\[(.*?)\]\s*\|\s*(\d+)\s*→\s*(\d+)"
+)
+
+
+COOKING_ALERT_BEFORE_TEXT = (
+    "🔔 **만들어둔 음식 파셨나요?**\n\n"
+    "변동상점 갱신까지 10분 남았습니다!"
+)
+
+COOKING_ALERT_UPDATED_TEXT = (
+    "🍳 **요리 변동상점이 갱신되었습니다!**\n\n"
+    "새로운 시세를 확인해보세요."
+)
+
+COOKING_ALERT_PREFIXES = (
+    "🔔 **만들어둔 음식 파셨나요?**",
+    "🍳 **요리 변동상점이 갱신되었습니다!**",
 )
 
 
@@ -182,9 +200,20 @@ class Cooking(commands.Cog):
         parent=cooking_group,
     )
 
+    alert_group = app_commands.Group(
+        name="알림",
+        description="요리 변동상점 갱신 알림을 관리합니다.",
+        parent=cooking_group,
+    )
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.update_locks: dict[int, asyncio.Lock] = {}
+        self.last_cooking_alert_key: str | None = None
+        self.cooking_alert_task.start()
+
+    def cog_unload(self) -> None:
+        self.cooking_alert_task.cancel()
 
     def get_guild_lock(self, guild_id: int) -> asyncio.Lock:
         if guild_id not in self.update_locks:
@@ -347,6 +376,206 @@ class Cooking(commands.Cog):
             ephemeral=True,
         )
 
+    @alert_group.command(
+        name="켜기",
+        description="요리 변동상점 갱신 알림을 켭니다.",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def enable_alert(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "❌ 서버 안에서만 사용할 수 있는 명령어입니다.",
+                ephemeral=True,
+            )
+            return
+
+        channel_id = get_channel_id(
+            interaction.guild.id,
+            "cooking",
+        )
+
+        if channel_id is None:
+            await interaction.response.send_message(
+                "❌ 먼저 `/요리 변동채널 설정`으로 "
+                "요리 변동상점 채널을 설정해주세요.",
+                ephemeral=True,
+            )
+            return
+
+        set_setting_enabled(
+            interaction.guild.id,
+            "cooking_alert",
+            True,
+        )
+
+        await interaction.response.send_message(
+            "✅ 요리 변동상점 갱신 알림을 켰습니다.\n\n"
+            "갱신 10분 전과 갱신 정각에 "
+            "설정된 요리 변동상점 채널로 알림을 보냅니다.",
+            ephemeral=True,
+        )
+
+    @alert_group.command(
+        name="끄기",
+        description="요리 변동상점 갱신 알림을 끕니다.",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def disable_alert(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "❌ 서버 안에서만 사용할 수 있는 명령어입니다.",
+                ephemeral=True,
+            )
+            return
+
+        set_setting_enabled(
+            interaction.guild.id,
+            "cooking_alert",
+            False,
+        )
+
+        channel = await self.get_cooking_channel(interaction.guild)
+
+        if channel is not None:
+            await self.delete_cooking_alerts(channel)
+
+        await interaction.response.send_message(
+            "✅ 요리 변동상점 갱신 알림을 껐습니다.",
+            ephemeral=True,
+        )
+
+    @alert_group.command(
+        name="확인",
+        description="요리 변동상점 갱신 알림 상태를 확인합니다.",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def check_alert(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "❌ 서버 안에서만 사용할 수 있는 명령어입니다.",
+                ephemeral=True,
+            )
+            return
+
+        enabled = get_setting_enabled(
+            interaction.guild.id,
+            "cooking_alert",
+        )
+
+        status_text = "켜짐" if enabled else "꺼짐"
+
+        await interaction.response.send_message(
+            "🍳 요리 변동상점 갱신 알림\n\n"
+            f"현재 상태: **{status_text}**",
+            ephemeral=True,
+        )
+
+    async def get_cooking_channel(
+        self,
+        guild: discord.Guild,
+    ) -> discord.TextChannel | None:
+        channel_id = get_channel_id(guild.id, "cooking")
+
+        if channel_id is None:
+            return None
+
+        channel = guild.get_channel(channel_id)
+
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(channel_id)
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+                return None
+
+        if not isinstance(channel, discord.TextChannel):
+            return None
+
+        return channel
+
+    async def delete_cooking_alerts(
+        self,
+        channel: discord.TextChannel,
+    ) -> None:
+        if self.bot.user is None:
+            return
+
+        try:
+            async for previous_message in channel.history(limit=50):
+                if previous_message.author.id != self.bot.user.id:
+                    continue
+
+                if not previous_message.content.startswith(
+                    COOKING_ALERT_PREFIXES
+                ):
+                    continue
+
+                try:
+                    await previous_message.delete()
+                except (discord.Forbidden, discord.NotFound):
+                    pass
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    async def send_cooking_alert(
+        self,
+        channel: discord.TextChannel,
+        content: str,
+    ) -> None:
+        await self.delete_cooking_alerts(channel)
+
+        try:
+            await channel.send(content)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    @tasks.loop(seconds=30)
+    async def cooking_alert_task(self) -> None:
+        now = datetime.now(ZoneInfo("Asia/Seoul"))
+
+        alert_kind: str | None = None
+        alert_text: str | None = None
+
+        if now.minute == 50 and now.hour % 3 == 2:
+            alert_kind = "before"
+            alert_text = COOKING_ALERT_BEFORE_TEXT
+        elif now.minute == 0 and now.hour % 3 == 0:
+            alert_kind = "updated"
+            alert_text = COOKING_ALERT_UPDATED_TEXT
+
+        if alert_kind is None or alert_text is None:
+            return
+
+        alert_key = now.strftime(f"%Y-%m-%d-%H-{alert_kind}")
+
+        if self.last_cooking_alert_key == alert_key:
+            return
+
+        self.last_cooking_alert_key = alert_key
+
+        for guild in self.bot.guilds:
+            if not get_setting_enabled(guild.id, "cooking_alert"):
+                continue
+
+            channel = await self.get_cooking_channel(guild)
+
+            if channel is None:
+                continue
+
+            await self.send_cooking_alert(channel, alert_text)
+
+    @cooking_alert_task.before_loop
+    async def before_cooking_alert_task(self) -> None:
+        await self.bot.wait_until_ready()
+
     async def send_invalid_message_dm(
         self,
         member: discord.Member,
@@ -443,6 +672,7 @@ class Cooking(commands.Cog):
                 return
 
             await self.delete_previous_results(message.channel)
+            await self.delete_cooking_alerts(message.channel)
             await message.channel.send(result_text)
 
             await send_use_log(
