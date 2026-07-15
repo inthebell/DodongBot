@@ -239,7 +239,7 @@ def build_result_text(
 ) -> str:
     parts = ["🍳 **요리 변동상점**"]
 
-    parts.append("\n🔥 고점")
+    parts.append("\n🔥 무별 고점")
 
     has_high_items = any(
         results.get(key)
@@ -257,6 +257,10 @@ def build_result_text(
             )
             parts.extend(items)
 
+    if results["은별고점"] or results["금별고점"]:
+        parts.append("\n━━━━━━━━━━━━━━━━━━━━━━━━")
+        parts.append("\n✨ 은별/금별 고점")
+
         for (tier, low, high), items in sorted(
             results["은별고점"].items()
         ):
@@ -273,7 +277,7 @@ def build_result_text(
             )
             parts.extend(items)
 
-    parts.append("\n━━━━━━━━━━━━━━")
+    parts.append("\n━━━━━━━━━━━━━━━━━━━━━━━━")
     parts.append("\n⭐ 추천")
 
     if not results.get("추천"):
@@ -287,7 +291,7 @@ def build_result_text(
             )
             parts.extend(items)
 
-    parts.append("\n━━━━━━━━━━━━━━")
+    parts.append("\n━━━━━━━━━━━━━━━━━━━━━━━━")
     parts.append(
         "\n※ 중간값 이하의 음식은 표시되지 않습니다."
     )
