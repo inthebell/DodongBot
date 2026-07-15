@@ -954,8 +954,13 @@ class Tax(
 
         await interaction.response.send_message(embed=embed)
 
-    @tasks.loop(time=MIDNIGHT_KST)
+    @tasks.loop(minutes=1)
     async def daily_tax_notice(self):
+        now = datetime.now(KST)
+
+        if now.hour != 0 or now.minute != 0:
+            return
+
         data = load_tax_data()
 
         channel_id = data["config"].get("channel_id")
