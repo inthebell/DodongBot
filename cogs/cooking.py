@@ -220,7 +220,7 @@ def parse_cooking(text: str) -> dict:
             continue
 
         result_key = "은별고점" if grade == "은별" else "금별고점"
-        output_emoji = "⚪" if grade == "은별" else "🟡"
+        output_emoji = "🩶" if grade == "은별" else "💛"
 
         results[result_key].setdefault(
             (tier, low, high),
