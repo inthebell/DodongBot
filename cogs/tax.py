@@ -9,7 +9,6 @@ from discord.ext import commands, tasks
 
 
 DODONG_GUILD_ID = 1517850860322029618
-NEW_TAX_GUILD_ID = 1385701565385408622
 OWNER_ID = 478834154595811328
 
 KST = timezone(timedelta(hours=9))
@@ -20,7 +19,6 @@ LEGACY_DATA_FILE = Path("data/tax_data.json")
 
 DEFAULT_ALLOWED_TAX_GUILDS = {
     DODONG_GUILD_ID,
-    NEW_TAX_GUILD_ID,
 }
 
 
@@ -362,13 +360,9 @@ def create_tax_status_embed(
     return embed
 
 
-TAX_GUILD_OBJECTS = [
-    discord.Object(id=guild_id)
-    for guild_id in ALLOWED_TAX_GUILDS
-]
-
-
-@app_commands.guilds(*TAX_GUILD_OBJECTS)
+@app_commands.guilds(
+    discord.Object(id=DODONG_GUILD_ID),
+)
 class Tax(
     commands.GroupCog,
     group_name="세금",
@@ -381,6 +375,22 @@ class Tax(
 
     def cog_unload(self):
         self.daily_tax_notice.cancel()
+
+    async def cog_load(self):
+        for guild_id in ALLOWED_TAX_GUILDS:
+            if guild_id == DODONG_GUILD_ID:
+                continue
+
+            try:
+                await self.register_tax_group_for_guild(guild_id)
+                print(
+                    f"세금 명령어 서버 연결 완료: {guild_id}"
+                )
+            except Exception as error:
+                print(
+                    f"세금 명령어 서버 연결 실패 "
+                    f"({guild_id}): {error}"
+                )
 
     async def check_admin(
         self,
