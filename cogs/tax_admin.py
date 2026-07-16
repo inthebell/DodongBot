@@ -10,10 +10,6 @@ from cogs.tax import (
     save_allowed_tax_guilds,
 )
 
-
-@app_commands.guilds(
-    discord.Object(id=DODONG_GUILD_ID),
-)
 class TaxAdmin(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -37,6 +33,9 @@ class TaxAdmin(commands.Cog):
     @app_commands.command(
         name="세금서버추가",
         description="세금 시스템을 사용할 서버를 추가합니다.",
+    )
+    @app_commands.guilds(
+        discord.Object(id=DODONG_GUILD_ID),
     )
     @app_commands.describe(
         서버아이디="세금 시스템을 활성화할 디스코드 서버 ID",
@@ -127,6 +126,9 @@ class TaxAdmin(commands.Cog):
         name="세금서버삭제",
         description="서버의 세금 시스템 사용 권한을 해제합니다.",
     )
+    @app_commands.guilds(
+        discord.Object(id=DODONG_GUILD_ID),
+    )
     @app_commands.describe(
         서버아이디="세금 시스템을 비활성화할 디스코드 서버 ID",
     )
@@ -203,6 +205,9 @@ class TaxAdmin(commands.Cog):
     @app_commands.command(
         name="세금서버목록",
         description="세금 시스템 사용이 허용된 서버를 확인합니다.",
+    )
+    @app_commands.guilds(
+        discord.Object(id=DODONG_GUILD_ID),
     )
     async def tax_server_list(
         self,
