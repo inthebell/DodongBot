@@ -591,17 +591,22 @@ class Tax(
 
         await interaction.response.defer(ephemeral=True)
 
-        try:
-            await self.unregister_tax_group_from_guild(guild_id)
-        except Exception as error:
-            await interaction.followup.send(
-                (
-                    "❌ 세금 명령어 해제에 실패했습니다.\n"
-                    f"`{error}`"
-                ),
-                ephemeral=True,
-            )
-            return
+        if guild is not None:
+            try:
+                await self.unregister_tax_group_from_guild(guild_id)
+            except discord.Forbidden:
+                pass
+            except discord.NotFound:
+                pass
+            except Exception as error:
+                await interaction.followup.send(
+                    (
+                        "❌ 세금 명령어 해제에 실패했습니다.\n"
+                        f"`{error}`"
+                    ),
+                    ephemeral=True,
+                )
+                return
 
         ALLOWED_TAX_GUILDS.discard(guild_id)
         save_allowed_tax_guilds(ALLOWED_TAX_GUILDS)
