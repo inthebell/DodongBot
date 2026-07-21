@@ -37,9 +37,9 @@ def save_game_rules(data: dict) -> None:
 
 
 GAME_CHOICES = [
-    app_commands.Choice(name="🃏 블랙잭", value="블랙잭"),
+    app_commands.Choice(name="🎴 블랙잭", value="블랙잭"),
     app_commands.Choice(name="💎 바카라", value="바카라"),
-    app_commands.Choice(name="🎴 잭팟", value="잭팟"),
+    app_commands.Choice(name="🎰 잭팟", value="잭팟"),
     app_commands.Choice(name="📈 업다운", value="업다운"),
     app_commands.Choice(name="🎟️ 양털 로또", value="양털 로또"),
     app_commands.Choice(name="🎲 랜덤 다이스", value="랜덤 다이스"),
