@@ -15,6 +15,7 @@ bot = commands.Bot(
 )
 
 DODONG_GUILD_ID = 1517850860322029618
+GAME_GUILD_ID = 1529024919210299444
 OWNER_ID = 478834154595811328
 
 @bot.event
@@ -24,11 +25,15 @@ async def on_ready():
     try:
         synced = await bot.tree.sync()
 
-        guild = discord.Object(id=DODONG_GUILD_ID)
-        guild_synced = await bot.tree.sync(guild=guild)
+        dodong_guild = discord.Object(id=DODONG_GUILD_ID)
+        dodong_synced = await bot.tree.sync(guild=dodong_guild)
+
+        game_guild = discord.Object(id=GAME_GUILD_ID)
+        game_synced = await bot.tree.sync(guild=game_guild)
 
         print(f"글로벌 명령어 {len(synced)}개 동기화 완료!")
-        print(f"도동마을 명령어 {len(guild_synced)}개 동기화 완료!")
+        print(f"도동마을 명령어 {len(dodong_synced)}개 동기화 완료!")
+        print(f"게임 서버 명령어 {len(game_synced)}개 동기화 완료!")
     except Exception as e:
         print(e)
 
