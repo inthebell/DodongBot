@@ -384,6 +384,22 @@ class Tax(
             try:
                 await self.register_tax_group_for_guild(guild_id)
                 print(
+                    f"[세금] 서버 명령어 자동 복구 완료: {guild_id}"
+                )
+            except Exception as error:
+                print(
+                    f"[세금] 서버 명령어 자동 복구 실패 "
+                    f"({guild_id}): {error}"
+                )
+
+    async def cog_load(self):
+        for guild_id in ALLOWED_TAX_GUILDS:
+            if guild_id == DODONG_GUILD_ID:
+                continue
+
+            try:
+                await self.register_tax_group_for_guild(guild_id)
+                print(
                     f"세금 명령어 서버 연결 완료: {guild_id}"
                 )
             except Exception as error:
@@ -1421,12 +1437,84 @@ class Tax(
 
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(
+        name="공지테스트",
+        description="설정된 채널로 세금 자동 공지를 테스트합니다.",
+    )
+    async def tax_notice_test(
+        self,
+        interaction: discord.Interaction,
+    ):
+        if not await self.check_admin(interaction):
+            return
+
+        guild_id = interaction.guild.id
+        data = load_tax_data(guild_id)
+        channel_id = data["config"].get("channel_id")
+
+        if not channel_id:
+            await interaction.response.send_message(
+                "❌ 세금 자동 공지 채널이 설정되어 있지 않습니다.",
+                ephemeral=True,
+            )
+            return
+
+        channel = interaction.guild.get_channel(channel_id)
+
+        if not isinstance(channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "❌ 설정된 세금 공지 채널을 찾을 수 없습니다.",
+                ephemeral=True,
+            )
+            return
+
+        if not data["members"]:
+            await interaction.response.send_message(
+                "❌ 등록된 마을원이 없습니다.",
+                ephemeral=True,
+            )
+            return
+
+        embed = create_tax_status_embed(
+            data,
+            interaction.guild.name,
+        )
+
+        try:
+            await channel.send(
+                content=(
+                    "📢 아직 이번 주 세금을 납부하지 않은 "
+                    "마을원은 기간 내 납부 부탁드립니다!"
+                ),
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        except discord.HTTPException as error:
+            await interaction.response.send_message(
+                (
+                    "❌ 세금 공지 전송에 실패했습니다.\n"
+                    f"`{error}`"
+                ),
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            f"✅ {channel.mention} 채널로 테스트 공지를 전송했습니다.",
+            ephemeral=True,
+        )
+        
     @tasks.loop(minutes=1)
     async def daily_tax_notice(self):
         now = datetime.now(KST)
 
-        if now.hour != 0 or now.minute != 0:
+        if now.hour != 0:
             return
+
+        print(
+            f"[세금공지] 자동 공지 확인 시작: "
+            f"{now.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
 
         today_text = now.date().isoformat()
 
@@ -1474,6 +1562,11 @@ class Tax(
 
                 data["config"]["last_auto_notice_date"] = today_text
                 save_tax_data(guild_id, data)
+
+                print(
+                    f"[세금공지] 전송 완료: "
+                    f"{guild.name} / 채널 {channel_id}"
+                )
 
             except discord.HTTPException as error:
                 print(
