@@ -360,6 +360,62 @@ def create_tax_status_embed(
     return embed
 
 
+
+def create_tax_notice_embed(
+    data: dict,
+    guild_name: str,
+) -> discord.Embed:
+    members = data["members"]
+    week_key = get_week_key()
+    payments = data["payments"].get(week_key, {})
+
+    unpaid_text, unpaid_count = group_members_by_tier(
+        data,
+        payments,
+        paid=False,
+    )
+
+    paid_count = len(members) - unpaid_count
+
+    if unpaid_count == 0:
+        embed = discord.Embed(
+            title=f"🎉 {guild_name} 세금 납부 완료",
+            description=(
+                f"**납부 기간:** {get_week_text()}\n"
+                f"**전체 {len(members)}명 · 납부 {paid_count}명 · "
+                f"미납 {unpaid_count}명**\n\n"
+                "✅ 모든 마을원의 이번 주 세금 납부가 "
+                "완료되었습니다!"
+            ),
+            color=discord.Color.green(),
+            timestamp=datetime.now(KST),
+        )
+
+        return embed
+
+    embed = discord.Embed(
+        title=f"📢 {guild_name} 세금 납부 안내",
+        description=(
+            f"**납부 기간:** {get_week_text()}\n"
+            f"**전체 {len(members)}명 · 납부 {paid_count}명 · "
+            f"미납 {unpaid_count}명**"
+        ),
+        color=discord.Color.red(),
+        timestamp=datetime.now(KST),
+    )
+
+    embed.add_field(
+        name=f"❌ 미납 마을원 ({unpaid_count}명)",
+        value=unpaid_text,
+        inline=False,
+    )
+
+    embed.set_footer(
+        text="아직 납부하지 않은 마을원은 기간 내 납부 부탁드립니다."
+    )
+
+    return embed
+
 @app_commands.guilds(
     discord.Object(id=DODONG_GUILD_ID),
 )
@@ -1475,7 +1531,7 @@ class Tax(
             )
             return
 
-        embed = create_tax_status_embed(
+        embed = create_tax_notice_embed(
             data,
             interaction.guild.name,
         )
@@ -1503,7 +1559,7 @@ class Tax(
             f"✅ {channel.mention} 채널로 테스트 공지를 전송했습니다.",
             ephemeral=True,
         )
-        
+
     @tasks.loop(minutes=1)
     async def daily_tax_notice(self):
         now = datetime.now(KST)
@@ -1545,7 +1601,7 @@ class Tax(
             if not data["members"]:
                 continue
 
-            embed = create_tax_status_embed(
+            embed = create_tax_notice_embed(
                 data,
                 guild.name,
             )
