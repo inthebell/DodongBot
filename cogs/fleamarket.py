@@ -34,6 +34,7 @@ from utils.channel_manager import (
 
 FLEAMARKET_GUILD_ID = 1525343469663682601
 OWNER_ID = 478834154595811328
+FLEAMARKET_LOG_CHANNEL_ID = 1531313975059550371
 
 KST = timezone(timedelta(hours=9))
 
@@ -126,6 +127,86 @@ class FleaMarket(commands.Cog):
             return False
 
         return await self.check_guild(interaction)
+
+
+    async def send_search_log(
+        self,
+        *,
+        message: discord.Message,
+        search_term: str,
+        sell_count: int,
+        buy_count: int,
+    ) -> None:
+        log_channel = self.bot.get_channel(
+            FLEAMARKET_LOG_CHANNEL_ID,
+        )
+
+        if log_channel is None:
+            try:
+                log_channel = await self.bot.fetch_channel(
+                    FLEAMARKET_LOG_CHANNEL_ID,
+                )
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+                return
+
+        if not isinstance(
+            log_channel,
+            discord.TextChannel,
+        ):
+            return
+
+        if sell_count == 0 and buy_count == 0:
+            result_text = "검색 결과 없음"
+            color = discord.Color.red()
+        else:
+            result_text = (
+                f"판매 {sell_count}건 / 구매 {buy_count}건"
+            )
+            color = discord.Color.green()
+
+        embed = discord.Embed(
+            title="🏪 플리마켓 검색",
+            color=color,
+            timestamp=datetime.now(KST),
+        )
+        embed.add_field(
+            name="사용자",
+            value=message.author.display_name,
+            inline=False,
+        )
+        embed.add_field(
+            name="ID",
+            value=str(message.author.id),
+            inline=False,
+        )
+        embed.add_field(
+            name="검색어",
+            value=search_term,
+            inline=False,
+        )
+        embed.add_field(
+            name="서버",
+            value=message.guild.name,
+            inline=False,
+        )
+        embed.add_field(
+            name="채널",
+            value=message.channel.mention,
+            inline=False,
+        )
+        embed.add_field(
+            name="결과",
+            value=result_text,
+            inline=False,
+        )
+        embed.set_footer(
+            text="DodongBot Flea Market Usage Log"
+        )
+
+        try:
+            await log_channel.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
     @tasks.loop(minutes=1)
     async def expiration_loop(self) -> None:
@@ -791,6 +872,13 @@ class FleaMarket(commands.Cog):
 
         sell_ads = results["판매"]
         buy_ads = results["구매"]
+
+        await self.send_search_log(
+            message=message,
+            search_term=search_term,
+            sell_count=len(sell_ads),
+            buy_count=len(buy_ads),
+        )
 
         await asyncio.sleep(1.0)
 
