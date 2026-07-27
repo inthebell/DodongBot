@@ -871,12 +871,13 @@ class FleaMarketApprovalView(discord.ui.View):
 
 
 
+
 class FleaMarketRegisterModal(discord.ui.Modal):
     def __init__(
         self,
         market_type: str,
         selected_items: list[str],
-        search_term: str,
+        search_terms: list[str],
     ):
         super().__init__(
             title=f"플리마켓 {market_type} 홍보 등록"
@@ -884,16 +885,20 @@ class FleaMarketRegisterModal(discord.ui.Modal):
         self.market_type = market_type
         self.selected_items = selected_items
 
-        category_default = normalize_single_line(search_term)
-        if len(category_default) > 10:
-            category_default = ""
+        category_default = ", ".join(
+            dict.fromkeys(
+                normalize_single_line(term)
+                for term in search_terms
+                if normalize_single_line(term)
+            )
+        )[:60]
 
         self.category = discord.ui.TextInput(
-            label="분류",
+            label="분류 (쉼표로 최대 5개)",
             placeholder="예) 금별요리, 작물, 광물",
             default=category_default or None,
             required=True,
-            max_length=10,
+            max_length=60,
         )
         self.description = discord.ui.TextInput(
             label="홍보 문구",
@@ -949,10 +954,13 @@ class FleaMarketRegisterModal(discord.ui.Modal):
 
         assert categories is not None
 
-        if has_existing_ad(
-            interaction.guild.id,
-            interaction.user.id,
-            self.market_type,
+        if (
+            interaction.user.id != OWNER_ID
+            and has_existing_ad(
+                interaction.guild.id,
+                interaction.user.id,
+                self.market_type,
+            )
         ):
             await interaction.response.send_message(
                 (
@@ -1091,6 +1099,108 @@ class FleaMarketRegisterModal(discord.ui.Modal):
         )
 
 
+def build_selection_summary_embed(
+    market_type: str,
+    selected_items: list[str],
+) -> discord.Embed:
+    remaining = MAX_ITEM_SELECTION - len(selected_items)
+    selected_text = "\n".join(
+        f"{index}. {display_item_name(item)}"
+        for index, item in enumerate(selected_items, start=1)
+    )
+
+    embed = discord.Embed(
+        title="🛒 플리마켓 아이템 선택 현황",
+        description=(
+            f"{selected_text}\n\n"
+            f"현재 **{len(selected_items)}개** 선택 · "
+            f"추가 가능 **{remaining}개**"
+        ),
+        color=market_color(market_type),
+    )
+    embed.set_footer(
+        text=(
+            "다른 종류를 더 검색하거나, 선택 완료를 눌러 홍보 내용을 작성하세요."
+        )
+    )
+    return embed
+
+
+class FleaMarketSelectionSummaryView(discord.ui.View):
+    def __init__(
+        self,
+        *,
+        market_type: str,
+        user_id: int,
+        selected_items: list[str],
+        search_terms: list[str],
+    ):
+        super().__init__(timeout=180)
+        self.market_type = market_type
+        self.user_id = user_id
+        self.selected_items = selected_items
+        self.search_terms = search_terms
+
+        if len(selected_items) >= MAX_ITEM_SELECTION:
+            self.add_more.disabled = True
+
+    async def check_user(
+        self,
+        interaction: discord.Interaction,
+    ) -> bool:
+        if interaction.user.id == self.user_id:
+            return True
+
+        await interaction.response.send_message(
+            "❌ 신청한 사용자만 사용할 수 있습니다.",
+            ephemeral=True,
+        )
+        return False
+
+    @discord.ui.button(
+        label="아이템 더 추가",
+        emoji="➕",
+        style=discord.ButtonStyle.primary,
+    )
+    async def add_more(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not await self.check_user(interaction):
+            return
+
+        await interaction.response.send_modal(
+            FleaMarketItemSearchModal(
+                market_type=self.market_type,
+                user_id=self.user_id,
+                selected_items=self.selected_items,
+                search_terms=self.search_terms,
+            )
+        )
+
+    @discord.ui.button(
+        label="선택 완료",
+        emoji="✅",
+        style=discord.ButtonStyle.success,
+    )
+    async def finish(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not await self.check_user(interaction):
+            return
+
+        await interaction.response.send_modal(
+            FleaMarketRegisterModal(
+                market_type=self.market_type,
+                selected_items=self.selected_items,
+                search_terms=self.search_terms,
+            )
+        )
+
+
 class FleaMarketItemSelect(discord.ui.Select):
     def __init__(
         self,
@@ -1099,25 +1209,31 @@ class FleaMarketItemSelect(discord.ui.Select):
         user_id: int,
         search_term: str,
         item_names: list[str],
+        selected_items: list[str],
+        search_terms: list[str],
     ):
         self.market_type = market_type
         self.user_id = user_id
         self.search_term = search_term
+        self.selected_items = selected_items
+        self.search_terms = search_terms
 
+        remaining = MAX_ITEM_SELECTION - len(selected_items)
         options = [
             discord.SelectOption(
                 label=display_item_name(item_name)[:100],
                 value=item_name[:100],
             )
             for item_name in item_names
+            if item_name not in selected_items
         ]
 
         super().__init__(
             placeholder=(
-                f"홍보할 아이템을 최대 {MAX_ITEM_SELECTION}개 선택해주세요."
+                f"추가할 아이템을 최대 {remaining}개 선택해주세요."
             ),
             min_values=1,
-            max_values=min(MAX_ITEM_SELECTION, len(options)),
+            max_values=min(remaining, len(options)),
             options=options,
         )
 
@@ -1132,12 +1248,29 @@ class FleaMarketItemSelect(discord.ui.Select):
             )
             return
 
-        await interaction.response.send_modal(
-            FleaMarketRegisterModal(
-                market_type=self.market_type,
-                selected_items=list(self.values),
-                search_term=self.search_term,
+        combined_items = list(
+            dict.fromkeys(
+                [*self.selected_items, *self.values]
             )
+        )[:MAX_ITEM_SELECTION]
+
+        combined_terms = list(
+            dict.fromkeys(
+                [*self.search_terms, self.search_term]
+            )
+        )
+
+        await interaction.response.edit_message(
+            embed=build_selection_summary_embed(
+                self.market_type,
+                combined_items,
+            ),
+            view=FleaMarketSelectionSummaryView(
+                market_type=self.market_type,
+                user_id=self.user_id,
+                selected_items=combined_items,
+                search_terms=combined_terms,
+            ),
         )
 
 
@@ -1149,6 +1282,8 @@ class FleaMarketItemSelectView(discord.ui.View):
         user_id: int,
         search_term: str,
         item_names: list[str],
+        selected_items: list[str],
+        search_terms: list[str],
     ):
         super().__init__(timeout=120)
         self.add_item(
@@ -1157,6 +1292,8 @@ class FleaMarketItemSelectView(discord.ui.View):
                 user_id=user_id,
                 search_term=search_term,
                 item_names=item_names,
+                selected_items=selected_items,
+                search_terms=search_terms,
             )
         )
 
@@ -1166,16 +1303,20 @@ class FleaMarketItemSearchModal(discord.ui.Modal):
         self,
         market_type: str,
         user_id: int,
+        selected_items: list[str] | None = None,
+        search_terms: list[str] | None = None,
     ):
         super().__init__(
             title=f"플리마켓 {market_type} 아이템 검색"
         )
         self.market_type = market_type
         self.user_id = user_id
+        self.selected_items = list(selected_items or [])
+        self.search_terms = list(search_terms or [])
 
         self.search_term = discord.ui.TextInput(
             label="아이템 검색어",
-            placeholder="예) 금별요리, 고로케, 철 주괴",
+            placeholder="예) 금별요리, 작물, 철 주괴",
             required=True,
             min_length=2,
             max_length=30,
@@ -1193,15 +1334,28 @@ class FleaMarketItemSearchModal(discord.ui.Modal):
             )
             return
 
+        remaining = MAX_ITEM_SELECTION - len(self.selected_items)
+
+        if remaining <= 0:
+            await interaction.response.send_message(
+                "❌ 이미 아이템 5개를 모두 선택했습니다.",
+                ephemeral=True,
+            )
+            return
+
         search_term = normalize_single_line(
             self.search_term.value
         )
-        item_names = search_market_items(search_term)
+        item_names = [
+            item
+            for item in search_market_items(search_term)
+            if item not in self.selected_items
+        ]
 
         if not item_names:
             await interaction.response.send_message(
                 (
-                    f"❌ `{search_term}`와 관련된 아이템을 "
+                    f"❌ `{search_term}`와 관련된 새 아이템을 "
                     "시세 데이터에서 찾지 못했습니다.\n"
                     "다른 검색어로 다시 시도해주세요."
                 ),
@@ -1217,16 +1371,17 @@ class FleaMarketItemSearchModal(discord.ui.Modal):
         embed = discord.Embed(
             title="🔎 여러 아이템이 검색되었습니다.",
             description=(
-                f"검색어: **{search_term}**\n\n"
+                f"검색어: **{search_term}**\n"
+                f"기존 선택: **{len(self.selected_items)}개**\n\n"
                 f"{item_lines}\n\n"
-                f"아래 목록에서 홍보할 아이템을 "
-                f"최대 {MAX_ITEM_SELECTION}개 선택해주세요."
+                f"아래 목록에서 아이템을 "
+                f"최대 **{remaining}개** 더 선택해주세요."
             ),
             color=market_color(self.market_type),
         )
         embed.set_footer(
             text=(
-                "선택한 정확한 아이템명이 플리마켓 검색 키워드로 저장됩니다."
+                "선택 후 다른 검색어로 아이템을 더 추가할 수 있습니다."
             )
         )
 
@@ -1237,6 +1392,8 @@ class FleaMarketItemSearchModal(discord.ui.Modal):
                 user_id=self.user_id,
                 search_term=search_term,
                 item_names=item_names,
+                selected_items=self.selected_items,
+                search_terms=self.search_terms,
             ),
             ephemeral=True,
         )
