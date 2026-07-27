@@ -382,7 +382,7 @@ class FleaMarket(commands.Cog):
             page_ads=today_expiring_ads,
             color=discord.Color.orange(),
         )
-        
+
     @fleamarket_group.command(
         name="홍보수정",
         description="내 플리마켓 홍보를 수정하고 재승인을 요청합니다.",
@@ -559,9 +559,10 @@ class FleaMarket(commands.Cog):
         guide_embed = discord.Embed(
             title="🏪 도동봇 플리마켓",
             description=(
-                "판매하거나 구매할 물품을 검색할 수 있는 채널입니다.\n"
-                "분류 또는 세부 키워드를 2글자 이상 입력해주세요.\n\n"
-                "홍보 등록은 현재 무료이며 운영자 승인 후 3일간 노출됩니다."
+                "판매하거나 구매할 물품을\n"
+                "간편하게 검색할 수 있는 채널입니다.\n\n"
+                "📌 판매 또는 구매 홍보를 등록하고\n"
+                "원하는 아이템을 빠르게 검색해보세요."
             ),
             color=discord.Color.green(),
         )
@@ -840,6 +841,13 @@ class FleaMarket(commands.Cog):
             content=None,
             embed=embed,
         )
+
+        await asyncio.sleep(15)
+
+        try:
+            await loading_message.delete()
+        except discord.HTTPException:
+            pass
 
 
 async def setup(
