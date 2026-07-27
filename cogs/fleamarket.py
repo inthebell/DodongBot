@@ -70,7 +70,6 @@ class FleaMarket(commands.Cog):
     fleamarket_group = app_commands.Group(
         name="플리마켓",
         description="플리마켓 홍보 및 검색 기능입니다.",
-        guild_ids=[FLEAMARKET_GUILD_ID],
     )
 
     def restore_pending_views(self) -> None:
@@ -97,9 +96,18 @@ class FleaMarket(commands.Cog):
             )
             return False
 
-        if interaction.guild.id != FLEAMARKET_GUILD_ID:
+        return True
+
+    async def check_manage_guild(
+        self,
+        interaction: discord.Interaction,
+    ) -> bool:
+        if not await self.check_guild(interaction):
+            return False
+
+        if not interaction.user.guild_permissions.manage_guild:
             await interaction.response.send_message(
-                "❌ 현재 플리마켓 서버에서만 사용할 수 있습니다.",
+                "❌ 서버 관리 권한이 있는 사용자만 사용할 수 있습니다.",
                 ephemeral=True,
             )
             return False
@@ -529,7 +537,7 @@ class FleaMarket(commands.Cog):
         self,
         interaction: discord.Interaction,
     ) -> None:
-        if not await self.check_owner_and_guild(interaction):
+        if not await self.check_manage_guild(interaction):
             return
 
         if not isinstance(
@@ -580,7 +588,7 @@ class FleaMarket(commands.Cog):
         self,
         interaction: discord.Interaction,
     ) -> None:
-        if not await self.check_owner_and_guild(interaction):
+        if not await self.check_manage_guild(interaction):
             return
 
         channel_id = get_channel_id(
@@ -614,7 +622,7 @@ class FleaMarket(commands.Cog):
         self,
         interaction: discord.Interaction,
     ) -> None:
-        if not await self.check_owner_and_guild(interaction):
+        if not await self.check_manage_guild(interaction):
             return
 
         removed = remove_channel_id(
@@ -734,9 +742,6 @@ class FleaMarket(commands.Cog):
             return
 
         if message.guild is None:
-            return
-
-        if message.guild.id != FLEAMARKET_GUILD_ID:
             return
 
         configured_channel_id = get_channel_id(
