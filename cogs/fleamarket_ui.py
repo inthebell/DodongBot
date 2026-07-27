@@ -1316,7 +1316,7 @@ class FleaMarketItemSearchModal(discord.ui.Modal):
 
         self.search_term = discord.ui.TextInput(
             label="아이템 검색어",
-            placeholder="예) 금별요리, 작물, 철 주괴",
+            placeholder="예) 금별요리, 레몬, 주괴",
             required=True,
             min_length=2,
             max_length=30,
