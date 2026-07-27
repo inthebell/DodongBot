@@ -24,6 +24,8 @@ class ServerList(commands.Cog):
             )
             return
 
+        await interaction.response.defer(ephemeral=True)
+
         guilds = sorted(
             self.bot.guilds,
             key=lambda guild: guild.member_count or 0,
@@ -44,10 +46,26 @@ class ServerList(commands.Cog):
             lines.append(f"👥 **{member_count:,}명**")
             lines.append("")
 
-        await interaction.response.send_message(
-            "\n".join(lines),
-            ephemeral=True
-        )
+        messages = []
+        current_message = ""
+
+        for line in lines:
+            next_line = line + "\n"
+
+            if len(current_message) + len(next_line) > 1900:
+                messages.append(current_message)
+                current_message = next_line
+            else:
+                current_message += next_line
+
+        if current_message:
+            messages.append(current_message)
+
+        for index, message in enumerate(messages):
+            await interaction.followup.send(
+                message,
+                ephemeral=True
+            )
 
 
 async def setup(bot):
