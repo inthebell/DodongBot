@@ -601,13 +601,12 @@ def search_active_ads(
             """
             SELECT *
             FROM flea_market
-            WHERE guild_id = ?
-              AND status = 'active'
+            WHERE status = 'active'
               AND expires_at IS NOT NULL
               AND expires_at > ?
             ORDER BY id DESC
             """,
-            (guild_id, get_kst_now()),
+            (get_kst_now(),),
         ).fetchall()
 
         results: dict[str, list[dict[str, Any]]] = {
