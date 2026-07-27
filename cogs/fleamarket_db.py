@@ -278,10 +278,7 @@ def get_user_ads(
     finally:
         connection.close()
 
-def get_management_ads(
-    *,
-    guild_id: int,
-) -> list[dict[str, Any]]:
+def get_management_ads() -> list[dict[str, Any]]:
     expire_ads()
     connection = connect()
 
@@ -290,8 +287,7 @@ def get_management_ads(
             """
             SELECT *
             FROM flea_market
-            WHERE guild_id = ?
-              AND status IN ('pending', 'active')
+            WHERE status IN ('pending', 'active')
             ORDER BY
                 CASE status
                     WHEN 'pending' THEN 0
@@ -303,8 +299,7 @@ def get_management_ads(
                     ELSE expires_at
                 END ASC,
                 id DESC
-            """,
-            (guild_id,),
+            """
         ).fetchall()
 
         return [dict(row) for row in rows]

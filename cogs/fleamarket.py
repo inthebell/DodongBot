@@ -346,9 +346,7 @@ class FleaMarket(commands.Cog):
         if not await self.check_owner_and_guild(interaction):
             return
 
-        ads = get_management_ads(
-            guild_id=interaction.guild.id,
-        )
+        ads = get_management_ads()
 
         pending_ads = [
             ad
@@ -580,7 +578,6 @@ class FleaMarket(commands.Cog):
 
         if (
             ad is None
-            or ad["guild_id"] != interaction.guild.id
             or ad["status"] not in ("pending", "active")
         ):
             await interaction.response.send_message(
