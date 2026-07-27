@@ -15,10 +15,8 @@ from cogs.fleamarket_db import (
     update_pending_ad,
     update_user_ad_for_review,
 )
-from utils.channel_manager import get_channel_id
-
-
 OWNER_ID = 478834154595811328
+FLEAMARKET_APPROVAL_CHANNEL_ID = 1531285321902198805
 
 
 def market_emoji(market_type: str) -> str:
@@ -251,26 +249,38 @@ async def notify_applicant(
         pass
 
 
+async def get_approval_channel(
+    interaction: discord.Interaction,
+) -> discord.TextChannel | None:
+    channel = interaction.client.get_channel(
+        FLEAMARKET_APPROVAL_CHANNEL_ID
+    )
+
+    if channel is None:
+        try:
+            channel = await interaction.client.fetch_channel(
+                FLEAMARKET_APPROVAL_CHANNEL_ID
+            )
+        except (
+            discord.Forbidden,
+            discord.NotFound,
+            discord.HTTPException,
+        ):
+            return None
+
+    if not isinstance(channel, discord.TextChannel):
+        return None
+
+    return channel
+
+
 async def send_new_approval_message(
     interaction: discord.Interaction,
     ad: dict,
 ) -> bool:
-    if interaction.guild is None:
-        return False
+    approval_channel = await get_approval_channel(interaction)
 
-    approval_channel_id = get_channel_id(
-        interaction.guild.id,
-        "fleamarket_approval",
-    )
-
-    if approval_channel_id is None:
-        return False
-
-    approval_channel = interaction.guild.get_channel(
-        approval_channel_id
-    )
-
-    if not isinstance(approval_channel, discord.TextChannel):
+    if approval_channel is None:
         return False
 
     try:
@@ -892,27 +902,17 @@ class FleaMarketRegisterModal(discord.ui.Modal):
             )
             return
 
-        approval_channel_id = get_channel_id(
-            interaction.guild.id,
-            "fleamarket_approval",
+        approval_channel = await get_approval_channel(
+            interaction
         )
 
-        if approval_channel_id is None:
+        if approval_channel is None:
             delete_ad(ad_id)
             await interaction.response.send_message(
-                "❌ 플리마켓 승인 채널이 설정되지 않았습니다.",
-                ephemeral=True,
-            )
-            return
-
-        approval_channel = interaction.guild.get_channel(
-            approval_channel_id
-        )
-
-        if not isinstance(approval_channel, discord.TextChannel):
-            delete_ad(ad_id)
-            await interaction.response.send_message(
-                "❌ 설정된 승인 채널을 찾을 수 없습니다.",
+                (
+                    "❌ 중앙 플리마켓 승인 채널을 찾을 수 없습니다.\n"
+                    "도동봇 운영자에게 문의해주세요."
+                ),
                 ephemeral=True,
             )
             return

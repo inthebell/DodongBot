@@ -19,6 +19,7 @@ from cogs.fleamarket_db import (
     search_active_ads,
 )
 from cogs.fleamarket_ui import (
+    FLEAMARKET_APPROVAL_CHANNEL_ID,
     FleaMarketApprovalView,
     FleaMarketRegisterView,
     FleaMarketUserEditModal,
@@ -227,14 +228,28 @@ class FleaMarket(commands.Cog):
         if not await self.check_guild(interaction):
             return
 
-        approval_channel_id = get_channel_id(
-            interaction.guild.id,
-            "fleamarket_approval",
+        approval_channel = self.bot.get_channel(
+            FLEAMARKET_APPROVAL_CHANNEL_ID
         )
 
-        if approval_channel_id is None:
+        if approval_channel is None:
+            try:
+                approval_channel = await self.bot.fetch_channel(
+                    FLEAMARKET_APPROVAL_CHANNEL_ID
+                )
+            except (
+                discord.Forbidden,
+                discord.NotFound,
+                discord.HTTPException,
+            ):
+                approval_channel = None
+
+        if not isinstance(approval_channel, discord.TextChannel):
             await interaction.response.send_message(
-                "❌ 플리마켓 승인 채널이 아직 설정되지 않았습니다.",
+                (
+                    "❌ 중앙 플리마켓 승인 채널을 찾을 수 없습니다.\n"
+                    "도동봇 운영자에게 문의해주세요."
+                ),
                 ephemeral=True,
             )
             return
