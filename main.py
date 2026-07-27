@@ -1,7 +1,10 @@
 import os
+import asyncio
+
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+
 
 load_dotenv()
 
@@ -9,14 +12,21 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
+
 bot = commands.Bot(
     command_prefix="!",
-    intents=intents
+    intents=intents,
 )
+
 
 DODONG_GUILD_ID = 1517850860322029618
 GAME_GUILD_ID = 1529024919210299444
+FLEAMARKET_GUILD_ID = 1525343469663682601
+
 OWNER_ID = 478834154595811328
+
+DM_LOG_CHANNEL_ID = 1525343943867498668
+
 
 @bot.event
 async def on_ready():
@@ -25,21 +35,44 @@ async def on_ready():
     try:
         synced = await bot.tree.sync()
 
-        dodong_guild = discord.Object(id=DODONG_GUILD_ID)
-        dodong_synced = await bot.tree.sync(guild=dodong_guild)
+        dodong_guild = discord.Object(
+            id=DODONG_GUILD_ID
+        )
+        dodong_synced = await bot.tree.sync(
+            guild=dodong_guild
+        )
 
-        game_guild = discord.Object(id=GAME_GUILD_ID)
-        game_synced = await bot.tree.sync(guild=game_guild)
+        game_guild = discord.Object(
+            id=GAME_GUILD_ID
+        )
+        game_synced = await bot.tree.sync(
+            guild=game_guild
+        )
 
-        print(f"글로벌 명령어 {len(synced)}개 동기화 완료!")
-        print(f"도동마을 명령어 {len(dodong_synced)}개 동기화 완료!")
-        print(f"게임 서버 명령어 {len(game_synced)}개 동기화 완료!")
+        fleamarket_guild = discord.Object(
+            id=FLEAMARKET_GUILD_ID
+        )
+        fleamarket_synced = await bot.tree.sync(
+            guild=fleamarket_guild
+        )
+
+        print(
+            f"글로벌 명령어 {len(synced)}개 동기화 완료!"
+        )
+        print(
+            f"도동마을 명령어 {len(dodong_synced)}개 동기화 완료!"
+        )
+        print(
+            f"게임 서버 명령어 {len(game_synced)}개 동기화 완료!"
+        )
+        print(
+            f"플리마켓 명령어 {len(fleamarket_synced)}개 동기화 완료!"
+        )
+
     except Exception as e:
-        print(e)
+        print(f"명령어 동기화 오류: {e}")
 
     print("도동봇 온라인!")
-
-DM_LOG_CHANNEL_ID = 1525343943867498668
 
 
 @bot.event
@@ -47,17 +80,31 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if isinstance(message.channel, discord.DMChannel):
-        log_channel = bot.get_channel(DM_LOG_CHANNEL_ID)
+    if isinstance(
+        message.channel,
+        discord.DMChannel,
+    ):
+        log_channel = bot.get_channel(
+            DM_LOG_CHANNEL_ID
+        )
 
         if log_channel is None:
             try:
-                log_channel = await bot.fetch_channel(DM_LOG_CHANNEL_ID)
+                log_channel = await bot.fetch_channel(
+                    DM_LOG_CHANNEL_ID
+                )
+
             except Exception as e:
-                print(f"문의 로그 채널을 찾지 못했습니다: {e}")
+                print(
+                    f"문의 로그 채널을 찾지 못했습니다: {e}"
+                )
                 return
 
-        thread_name = f"📩 {message.author.name}님의 문의 ({message.author.id})"
+        thread_name = (
+            f"📩 {message.author.name}님의 문의 "
+            f"({message.author.id})"
+        )
+
         inquiry_thread = None
 
         for thread in log_channel.threads:
@@ -67,12 +114,17 @@ async def on_message(message):
 
         if inquiry_thread is None:
             try:
-                async for thread in log_channel.archived_threads(limit=100):
+                async for thread in log_channel.archived_threads(
+                    limit=100
+                ):
                     if thread.name == thread_name:
                         inquiry_thread = thread
                         break
+
             except Exception as e:
-                print(f"보관된 문의 스레드 검색 오류: {e}")
+                print(
+                    f"보관된 문의 스레드 검색 오류: {e}"
+                )
 
         if inquiry_thread is None:
             starter_embed = discord.Embed(
@@ -82,7 +134,7 @@ async def on_message(message):
                     f"**사용자 ID:** `{message.author.id}`"
                 ),
                 color=discord.Color.blurple(),
-                timestamp=discord.utils.utcnow()
+                timestamp=discord.utils.utcnow(),
             )
 
             starter_embed.set_thumbnail(
@@ -99,58 +151,69 @@ async def on_message(message):
 
             inquiry_thread = await starter_message.create_thread(
                 name=thread_name,
-                auto_archive_duration=10080
+                auto_archive_duration=10080,
             )
 
         elif inquiry_thread.archived:
             try:
-                await inquiry_thread.edit(archived=False)
+                await inquiry_thread.edit(
+                    archived=False
+                )
+
             except Exception as e:
-                print(f"문의 스레드 다시 열기 오류: {e}")
+                print(
+                    f"문의 스레드 다시 열기 오류: {e}"
+                )
 
         await inquiry_thread.send(
-            f"<@{OWNER_ID}> 🔔 **새로운 문의가 도착했습니다.**",
+            (
+                f"<@{OWNER_ID}> "
+                "🔔 **새로운 문의가 도착했습니다.**"
+            ),
             allowed_mentions=discord.AllowedMentions(
                 users=True,
                 roles=False,
-                everyone=False
-            )
+                everyone=False,
+            ),
         )
 
         inquiry_embed = discord.Embed(
             title="📩 사용자 문의",
             description=message.content or "(내용 없음)",
             color=discord.Color.blurple(),
-            timestamp=message.created_at
+            timestamp=message.created_at,
         )
 
         inquiry_embed.set_author(
             name=str(message.author),
-            icon_url=message.author.display_avatar.url
+            icon_url=message.author.display_avatar.url,
         )
 
         inquiry_embed.add_field(
             name="사용자 ID",
             value=f"`{message.author.id}`",
-            inline=False
+            inline=False,
         )
 
         if message.attachments:
             attachment_links = "\n".join(
-                attachment.url for attachment in message.attachments
+                attachment.url
+                for attachment in message.attachments
             )
 
             inquiry_embed.add_field(
                 name="첨부파일",
                 value=attachment_links,
-                inline=False
+                inline=False,
             )
 
             first_attachment = message.attachments[0]
 
             if (
                 first_attachment.content_type
-                and first_attachment.content_type.startswith("image/")
+                and first_attachment.content_type.startswith(
+                    "image/"
+                )
             ):
                 inquiry_embed.set_image(
                     url=first_attachment.url
@@ -160,9 +223,12 @@ async def on_message(message):
             text="DodongBot Support"
         )
 
-        await inquiry_thread.send(embed=inquiry_embed)
+        await inquiry_thread.send(
+            embed=inquiry_embed
+        )
 
     await bot.process_commands(message)
+
 
 async def load_extensions():
     await bot.load_extension("cogs.ping")
@@ -180,11 +246,12 @@ async def load_extensions():
     await bot.load_extension("cogs.fleamarket")
     await bot.load_extension("cogs.tax")
     await bot.load_extension("cogs.game_rules")
+
+
 async def main():
     async with bot:
         await load_extensions()
         await bot.start(TOKEN)
 
 
-import asyncio
 asyncio.run(main())

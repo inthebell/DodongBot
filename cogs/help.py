@@ -40,6 +40,26 @@ class Help(commands.Cog):
         )
 
         embed.add_field(
+            name="🏪 플리마켓",
+            value=(
+                "`/플리마켓 채널설정`\n"
+                "현재 채널을 플리마켓 검색 채널로 설정합니다.\n\n"
+                "`/플리마켓 홍보등록`\n"
+                "판매 또는 구매 홍보를 등록합니다.\n"
+                "`/플리마켓 내홍보`\n"
+                "등록한 홍보와 남은 기간을 확인합니다.\n"
+                "`/플리마켓 홍보수정`\n"
+                "등록한 홍보를 수정합니다.\n"
+                "`/플리마켓 홍보삭제`\n"
+                "등록한 홍보를 삭제합니다.\n\n"
+                "설정된 플리마켓 채널에서\n"
+                "아이템명 또는 분류를 입력하면\n"
+                "등록된 홍보를 검색할 수 있습니다."
+            ),
+            inline=False
+        )
+
+        embed.add_field(
             name="📈 변동상점",
             value=(
                 "**🍳 요리 변동상점**\n"
@@ -99,7 +119,7 @@ class Help(commands.Cog):
             inline=False
         )
 
-        embed.set_footer(text="DodongBot v1.3.0")
+        embed.set_footer(text="DodongBot v1.5.0")
 
         await interaction.response.send_message(embed=embed)
 
