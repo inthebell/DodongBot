@@ -1406,6 +1406,54 @@ class Tax(
 
         await interaction.response.send_message(embed=embed)
 
+    async def tax_delete_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ):
+        if interaction.guild is None:
+            return []
+
+        data = load_tax_data(interaction.guild.id)
+        members = data["members"]
+
+        current_lower = current.lower().strip()
+        choices = []
+
+        for member_id, member_data in get_sorted_members(members):
+            game_name = member_data.get(
+                "game_name",
+                "알 수 없음",
+            )
+            display_name = member_data.get(
+                "display_name",
+                "",
+            )
+
+            search_text = (
+                f"{game_name} {display_name} {member_id}"
+            ).lower()
+
+            if current_lower and current_lower not in search_text:
+                continue
+
+            choice_name = (
+                f"{game_name} · "
+                f"{member_data.get('tier', '?')}차"
+            )
+
+            choices.append(
+                app_commands.Choice(
+                    name=choice_name[:100],
+                    value=member_id,
+                )
+            )
+
+            if len(choices) >= 25:
+                break
+
+        return choices
+
     @app_commands.command(
         name="삭제",
         description="마을원을 세금 명단에서 삭제합니다.",
@@ -1413,26 +1461,26 @@ class Tax(
     @app_commands.describe(
         대상="세금 명단에서 삭제할 마을원",
     )
+    @app_commands.autocomplete(
+        대상=tax_delete_autocomplete,
+    )
     async def tax_delete(
         self,
         interaction: discord.Interaction,
-        대상: discord.Member,
+        대상: str,
     ):
         if not await self.check_admin(interaction):
             return
 
         guild_id = interaction.guild.id
         data = load_tax_data(guild_id)
-        member_id = str(대상.id)
 
+        member_id = 대상.strip()
         member_data = data["members"].get(member_id)
 
         if member_data is None:
             await interaction.response.send_message(
-                (
-                    f"❌ {대상.mention}님은 등록된 "
-                    "마을원이 아닙니다."
-                ),
+                "❌ 세금 명단에서 해당 마을원을 찾을 수 없습니다.",
                 ephemeral=True,
             )
             return
@@ -1440,6 +1488,10 @@ class Tax(
         game_name = member_data.get(
             "game_name",
             "알 수 없음",
+        )
+        display_name = member_data.get(
+            "display_name",
+            game_name,
         )
 
         del data["members"][member_id]
@@ -1452,7 +1504,7 @@ class Tax(
         embed = discord.Embed(
             title="🗑️ 마을원 삭제 완료",
             description=(
-                f"{대상.mention} · `{game_name}`님을\n"
+                f"**{display_name}** · `{game_name}`님을\n"
                 "세금 명단에서 삭제했습니다."
             ),
             color=discord.Color.red(),
