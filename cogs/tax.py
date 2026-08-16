@@ -440,22 +440,6 @@ class Tax(
             try:
                 await self.register_tax_group_for_guild(guild_id)
                 print(
-                    f"[세금] 서버 명령어 자동 복구 완료: {guild_id}"
-                )
-            except Exception as error:
-                print(
-                    f"[세금] 서버 명령어 자동 복구 실패 "
-                    f"({guild_id}): {error}"
-                )
-
-    async def cog_load(self):
-        for guild_id in ALLOWED_TAX_GUILDS:
-            if guild_id == DODONG_GUILD_ID:
-                continue
-
-            try:
-                await self.register_tax_group_for_guild(guild_id)
-                print(
                     f"세금 명령어 서버 연결 완료: {guild_id}"
                 )
             except Exception as error:
