@@ -502,6 +502,14 @@ class Tax(
         guild_object = discord.Object(id=guild_id)
         group = self.__cog_app_commands_group__
 
+        self.bot.tree.remove_command(
+            group.name,
+            guild=guild_object,
+            type=discord.AppCommandType.chat_input,
+        )
+
+        await self.bot.tree.sync(guild=guild_object)
+
         self.bot.tree.add_command(
             group,
             guild=guild_object,
